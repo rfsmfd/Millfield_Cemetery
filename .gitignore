@@ -10,6 +10,14 @@ firestore.rules
 firebase.json
 .firebaserc
 
+# Service account keys open the whole database. They should never be in this
+# folder at all - it is a public repository - but if one ever lands here by
+# accident, git must not carry it to GitHub.
+*.json
+!data/*.geojson
+*-key.txt
+*credentials*
+
 # working files
 index.html.bak
 Start Cemetery Map.bat
