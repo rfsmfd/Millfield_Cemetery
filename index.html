@@ -345,7 +345,7 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
      Export writes the whole thing back out as plain CSV and GeoJSON - the
      copy that outlives any account, any subscription, and any one person.
    ===================================================================== */
-const BUILD = 29;
+const BUILD = 30;
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -1652,7 +1652,10 @@ function fullRows(){
     return {
       plot_id: p.id,
       plot_number: plotName(p),          // "M20", the committee's own name for it
-      section: p.block || '',
+      /* The section letter comes off the plot number the committee typed -
+         "F20" gives "F" - never from the old nearest-label-point guess, which
+         was wrong on 263 plots and would put the wrong letter into ArcGIS. */
+      section: (/^([A-Za-z]+)/.exec(plotName(p)) || ['',''])[1].toUpperCase(),
       lot_in_section: p.plot || '',
       status: statusOf(p),
       lot_owner: e.buyer || e.owner || p.owner || '',
