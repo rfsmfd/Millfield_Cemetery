@@ -10,7 +10,7 @@
    Bump BUILD to match index.html when you ship. */
 // Bump on EVERY change - the number names the caches, so a stale build and a
 // stale data/*.geojson both survive a refresh until it changes.
-const BUILD = 18;
+const BUILD = 19;
 const APP   = 'mc-app-v' + BUILD;
 const DATA  = 'mc-data-v' + BUILD;
 const LIB   = 'mc-lib-v1';

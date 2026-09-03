@@ -173,6 +173,25 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
 #toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
 #loading{position:fixed;inset:0;background:var(--bg);z-index:2000;display:flex;
   align-items:center;justify-content:center;flex-direction:column;gap:14px;font-size:17px;color:var(--ink2)}
+
+/* On a phone the sheet slides up over the map, which is right - there is no
+   room for anything else. On a desktop that hides the very thing you are
+   looking at, so it docks down the side instead and the map stays live:
+   still pannable, still readable, plot still visible beside its details. */
+@media (min-width: 900px){
+  #panel{align-items:stretch;justify-content:flex-end;background:transparent;pointer-events:none}
+  #panel{justify-content:flex-start}
+  /* opens over the map, clear of the title bar above and the filters below */
+  #panelbody{pointer-events:auto;position:fixed;top:84px;left:22px;right:auto;width:430px;max-width:430px;
+    margin:0;max-height:calc(100vh - 176px);border:1px solid var(--line);border-radius:14px;
+    box-shadow:12px 14px 40px rgba(30,26,18,.30);padding:0 20px 24px}
+  /* a bar to take hold of, so the window can be put wherever it suits */
+  #panelbody .grab{width:auto;height:34px;margin:0 -20px 12px;background:var(--sunk);
+    border-radius:13px 13px 0 0;border-bottom:1px solid var(--line);cursor:grab;
+    position:sticky;top:0;z-index:5;display:flex;align-items:center;justify-content:center}
+  #panelbody .grab::after{content:'';width:44px;height:5px;border-radius:3px;background:var(--line)}
+  #panelbody.dragging .grab{cursor:grabbing}
+}
 </style>
 </head>
 <body>
@@ -278,7 +297,7 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
      Export writes the whole thing back out as plain CSV and GeoJSON - the
      copy that outlives any account, any subscription, and any one person.
    ===================================================================== */
-const BUILD = 18;
+const BUILD = 19;
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -977,8 +996,61 @@ function openPanel(html){
   });
   $('#panel').classList.add('on');
   $('#panelbody').scrollTop = 0;
+  if(window._restorePanel) window._restorePanel();
 }
 function closePanel(){ $('#panel').classList.remove('on'); }
+
+/* ---- the window can be dragged out of the way ----
+   Only on a big screen; on a phone it is a sheet that slides up from the
+   bottom and there is nowhere to move it to. Where it is left is remembered,
+   so it stays put between plots and between sessions. */
+function wireDrag(){
+  const body = $('#panelbody'), bar = $('#panelbody .grab');
+  if(!bar) return;
+  const wide = () => window.matchMedia('(min-width: 900px)').matches;
+
+  function place(x, y){
+    const w = body.offsetWidth, h = body.offsetHeight;
+    x = Math.max(4, Math.min(x, window.innerWidth  - w - 4));
+    y = Math.max(4, Math.min(y, window.innerHeight - Math.min(h, window.innerHeight - 8) - 4));
+    body.style.left = x + 'px';
+    body.style.top  = y + 'px';
+    body.style.right = 'auto';
+    try{ localStorage.setItem('millfield_panelpos', JSON.stringify({x:x, y:y})); }catch(e){}
+  }
+  window._restorePanel = function(){
+    if(!wide()){ body.style.left = body.style.top = body.style.right = ''; return; }
+    let p = null;
+    try{ p = JSON.parse(localStorage.getItem('millfield_panelpos') || 'null'); }catch(e){}
+    if(p){ place(p.x, p.y); return; }
+    /* Not moved yet: sit just under the title bar, which is taller in
+       committee mode because of the badge. */
+    body.style.top = ($('#topbar').getBoundingClientRect().bottom + 10) + 'px';
+  };
+
+  let dx = 0, dy = 0;
+  const move = function(e){ place(e.clientX - dx, e.clientY - dy); };
+  const up = function(){
+    body.classList.remove('dragging');
+    document.removeEventListener('mousemove', move);
+    document.removeEventListener('mouseup', up);
+  };
+  bar.addEventListener('mousedown', function(e){
+    if(!wide()) return;
+    const r = body.getBoundingClientRect();
+    dx = e.clientX - r.left; dy = e.clientY - r.top;
+    body.classList.add('dragging');
+    document.addEventListener('mousemove', move);
+    document.addEventListener('mouseup', up);
+    e.preventDefault();
+  });
+  // a double-tap on the bar puts it back in the corner
+  bar.addEventListener('dblclick', function(){
+    body.style.left = body.style.top = ''; body.style.right = '';
+    try{ localStorage.removeItem('millfield_panelpos'); }catch(e){}
+  });
+  window.addEventListener('resize', function(){ window._restorePanel(); });
+}
 
 function showBurial(p){
   const rows = [['Born', fmtDate(p.birth)], ['Died', fmtDate(p.death)], ['Age', p.age],
@@ -2224,6 +2296,7 @@ function wire(){
   };
 
   $('#panel').onclick = function(e){ if(e.target.id === 'panel') closePanel(); };
+  wireDrag();
 }
 
 if('serviceWorker' in navigator && location.protocol !== 'file:'){
