@@ -30,6 +30,22 @@ button{background:none;border:0;cursor:pointer}
   background:var(--surface);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
 #topbar h1{margin:0;font-size:19px;font-weight:650;letter-spacing:-.2px}
 #topbar .sub{font-size:14px;color:var(--ink3)}
+.subrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+/* Everything the map can do, in words. The icons down the side are quicker
+   once you know them; this is for the members who open it twice a year. */
+#btnMenu{font-size:13px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;
+  background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:7px 12px;
+  min-height:34px;color:var(--ink2)}
+#menu{position:absolute;left:14px;z-index:850;display:none;min-width:270px;max-width:calc(100vw - 28px);
+  background:var(--surface);border:1px solid var(--line);border-radius:12px;
+  box-shadow:0 14px 34px rgba(30,26,18,.28);overflow:hidden}
+#menu.on{display:block}
+#menu button{display:flex;align-items:center;gap:12px;width:100%;text-align:left;
+  padding:13px 15px;min-height:52px;font-size:16px;border-bottom:1px solid var(--sunk)}
+#menu button:last-child{border-bottom:0}
+#menu button .ic{width:24px;text-align:center;font-size:18px;flex:0 0 auto}
+#menu .sep{padding:8px 15px 6px;font-size:11px;font-weight:750;letter-spacing:.6px;
+  text-transform:uppercase;color:var(--admin);background:var(--bg);border-bottom:1px solid var(--sunk)}
 #topbar.admin{background:#F1E3D3;border-bottom-color:var(--admin)}
 /* A word, not an icon. The committee opens this a few times a year and nobody
    remembers what an unlabelled padlock does - it reads as "log out". */
@@ -208,7 +224,10 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
   <div id="topbar">
     <div style="flex:1;min-width:0">
       <h1>Millfield Cemetery</h1>
-      <div class="sub" id="counts">&nbsp;</div>
+      <div class="subrow">
+        <span class="sub" id="counts">&nbsp;</span>
+        <button id="btnMenu" onclick="toggleMenu()">&#9776; Menu</button>
+      </div>
       <button class="adminflag" id="adminFlag" onclick="adminPanel()">&#9881; Committee tools</button>
     </div>
     <button class="iconbtn" id="btnSearch" aria-label="Search by name">&#128269;</button>
@@ -276,6 +295,8 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
   </div>
 </div>
 
+<div id="menu"></div>
+
 <div id="panel"><div id="panelbody"><div class="grab"></div><div id="panelcontent"></div></div></div>
 <div id="toast"></div>
 
@@ -303,7 +324,7 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
      Export writes the whole thing back out as plain CSV and GeoJSON - the
      copy that outlives any account, any subscription, and any one person.
    ===================================================================== */
-const BUILD = 21;
+const BUILD = 22;
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -2119,6 +2140,69 @@ function exportLedger(){
   toast(rows.length + ' lines saved');
 }
 
+/* =====================================================================
+   THE MENU
+   The same things the icons down the side do, said in words. Nobody who
+   opens this twice a year remembers what a satellite dish or a padlock
+   means, and they should not have to.
+   ===================================================================== */
+function menuItem(icon, label, fn){
+  return '<button onclick="closeMenu();' + fn + '"><span class="ic">' + icon + '</span>' + label + '</button>';
+}
+function buildMenu(){
+  const basemapName = ['Esri imagery','Virginia VBMP imagery','Street map'][window._baseIndex || 0];
+  return menuItem('&#128269;', 'Find a name or a plot', 'openSearch()') +
+    menuItem('&#9776;', 'Choose what to show', 'openLayers()') +
+    menuItem('&#128752;', 'Background: ' + basemapName, 'nextBasemap()') +
+    menuItem('&#128205;', 'Show me where I am', 'locateMe()') +
+    (isAdmin
+      ? '<div class="sep">Committee</div>' +
+        menuItem('&#9881;', 'Committee tools &mdash; ledger, letters', 'adminPanel()') +
+        menuItem('&#128275;', 'Sign out', 'signOut()')
+      : menuItem('&#128274;', 'Committee sign-in', 'adminPanel()')) +
+    '<div class="sep">About</div>' +
+    menuItem('&#8505;', 'About this map', 'showAbout()');
+}
+function toggleMenu(){
+  const m = $('#menu');
+  if(m.classList.contains('on')) return closeMenu();
+  m.innerHTML = buildMenu();
+  m.style.top = ($('#topbar').getBoundingClientRect().bottom + 6) + 'px';
+  m.classList.add('on');
+}
+function closeMenu(){ $('#menu').classList.remove('on'); }
+
+function showAbout(){
+  openPanel(
+    '<h2>Millfield Church Cemetery</h2>' +
+    '<p class="note" style="margin-top:0">A map of the cemetery drawn from the church&rsquo;s own survey: ' +
+      D.plots.features.length + ' plots, ' + D.burials.features.length + ' burials, ' +
+      (D.lots.features||[]).length + ' family lots.</p>' +
+    '<div class="sec-h">Anyone can</div>' +
+    '<p class="note" style="margin-top:0">Find a grave by name, see which plots are still available, and stand ' +
+      'in the cemetery and see what is around them. Burial names and dates are public, as they are on the stones.</p>' +
+    '<div class="sec-h">The committee can</div>' +
+    '<p class="note" style="margin-top:0">Record burials and sales, print a record of purchase, keep the ledger, ' +
+      'and track the ' + POST_DAYS + ' days for corner markers and the ' + STONE_DAYS + ' days for a headstone. ' +
+      'Purchasers&rsquo; addresses, telephone numbers and prices are kept private and need a sign-in.</p>' +
+    '<div class="sec-h">Keeping it</div>' +
+    '<p class="note" style="margin-top:0">The record lives in the cloud, free, and any committee member can add ' +
+      'the next one. <b>Export the whole record</b> writes it all out as plain files that Excel and any mapping ' +
+      'program can read, with no account and no subscription &mdash; keep the newest one with the church papers.</p>' +
+    '<p class="note">Millfield Baptist Church Cemetery Committee &middot; ' + CHURCH.tel + '</p>' +
+    '<button class="btn sec" onclick="closePanel()">Close</button>');
+}
+
+/* the map buttons, callable by name so the menu can say what they do */
+function openSearch(){
+  const s = $('#search'); s.classList.add('on'); $('#q').focus();
+}
+function openLayers(){
+  $('#layers').classList.add('on'); $('#btnLayers').classList.add('on');
+}
+function locateMe(){ $('#btnLocate').click(); }
+function nextBasemap(){ $('#btnBase').click(); }
+
 /* ---------- the committee door ---------- */
 function adminPanel(){
   if(isAdmin){
@@ -2257,9 +2341,11 @@ function wire(){
                  {l:function(){ return baseVGIN;   }, i:'🇻', n:'Virginia VBMP imagery'},
                  {l:function(){ return basePlain;  }, i:'🗺', n:'Street map'}];
   let bi = 0;
+  window._baseIndex = 0;
   $('#btnBase').onclick = function(){
     map.removeLayer(BASES[bi].l());
     bi = (bi + 1) % BASES.length;
+    window._baseIndex = bi;
     BASES[bi].l().addTo(map);
     $('#btnBase').textContent = BASES[bi].i;
     toast(BASES[bi].n);
@@ -2349,6 +2435,12 @@ function wire(){
   };
 
   $('#panel').onclick = function(e){ if(e.target.id === 'panel') closePanel(); };
+  // a tap anywhere else puts the menu away
+  document.addEventListener('click', function(e){
+    if(!$('#menu').classList.contains('on')) return;
+    if(e.target.closest('#menu') || e.target.closest('#btnMenu')) return;
+    closeMenu();
+  });
   wireDrag();
 }
 
