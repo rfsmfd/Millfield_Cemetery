@@ -345,7 +345,7 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
      Export writes the whole thing back out as plain CSV and GeoJSON - the
      copy that outlives any account, any subscription, and any one person.
    ===================================================================== */
-const BUILD = 31;
+const BUILD = 32;
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -819,6 +819,7 @@ function cloudInit(){
           snap.forEach(function(doc){ privRec[doc.id] = doc.data(); });
           rebuildCloud();
           tidyPrivate();
+          repairMisKeyedSale();
         }, function(){ privRec = {}; rebuildCloud(); });
         /* the committee roll. Only a member may change it, and a member
            may add the next one - so the committee can hand itself on
@@ -878,6 +879,50 @@ function cloudWrite(id, patch){
   }
   localRec[id] = body; saveLocal();
   mergeRecords(); applyStyles(); refreshCounts();
+}
+
+/* =====================================================================
+   ONE-TIME REPAIR: the Cutright sale was recorded against the wrong ids
+
+   The export used to number plots 1..565 - the numbering a projected copy
+   gets - while the geodatabase's own ids run 102..802. So the sale went
+   into the cloud against plots "492" and "493", which are real plots but
+   not the ground that was bought. The export now carries the real id, and
+   this moves that one sale across to it: 492 -> 729, 730 <- 493.
+
+   It only touches those two documents, only if they still carry that sale,
+   and it deletes them afterwards, so it can never run twice or touch
+   anything else. Safe to leave in place; safe to delete once done.
+   ===================================================================== */
+const ID_REPAIR = {'492':'729', '493':'730'};
+const ID_REPAIR_SALE = 'sale-mtkvi2f5';
+let repairing = false;
+
+function repairMisKeyedSale(){
+  if(repairing || !cloud.user || !db) return;
+  const jobs = [];
+  Object.keys(ID_REPAIR).forEach(function(oldId){
+    const pub = pubRec[oldId];
+    if(!pub || pub.saleId !== ID_REPAIR_SALE) return;
+    jobs.push({old:oldId, now:ID_REPAIR[oldId], pub:pub, priv:privRec[oldId]});
+  });
+  if(!jobs.length) return;
+  repairing = true;
+  Promise.all(jobs.map(function(j){
+    const pub = Object.assign({}, j.pub, {plotId:j.now});
+    const work = [db.collection(COLL).doc(j.now).set(pub, {merge:true})];
+    if(j.priv){
+      work.push(db.collection(PRIV).doc(j.now)
+        .set(Object.assign({}, j.priv, {plotId:j.now}), {merge:true}));
+    }
+    return Promise.all(work)
+      .then(function(){ return db.collection(COLL).doc(j.old).delete(); })
+      .then(function(){ return db.collection(PRIV).doc(j.old).delete().catch(function(){}); });
+  })).then(function(){
+    toast('Moved the Cutright sale onto the correct plots', 5000);
+  }).catch(function(e){
+    toast('Could not move the sale: ' + (e.code || e.message), 6000);
+  }).then(function(){ repairing = false; });
 }
 
 /* Anything private that was written into the public half before the two were
