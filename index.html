@@ -63,6 +63,11 @@ body.isadmin .adminflag{display:inline-flex}
   border:1px solid var(--line);border-radius:11px;padding:10px 12px;font-size:14px;line-height:1.7}
 #legend .row{display:flex;align-items:center;gap:8px;white-space:nowrap}
 #legend .sw{width:16px;height:16px;border-radius:3px;border:1px solid rgba(0,0,0,.35);flex:0 0 auto}
+/* Small, but never below the size this app will read anything at, and it is a
+   button - the short line is on the map, the full wording a tap away. */
+#surveynote{position:absolute;left:10px;bottom:130px;z-index:600;max-width:250px;text-align:left;
+  background:rgba(244,236,217,.95);border:1px solid var(--line);border-radius:9px;
+  padding:8px 11px;font-size:14px;line-height:1.35;color:var(--ink2)}
 
 #mapbtns{position:absolute;right:10px;top:10px;z-index:600;display:flex;flex-direction:column;gap:8px}
 #mapbtns button{width:48px;height:48px;border-radius:11px;border:1px solid var(--line);
@@ -284,6 +289,8 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
       <div class="row"><span class="sw" style="background:#4E6E8C"></span>Sold</div>
       <div class="row"><span class="sw" style="background:#5A5751"></span>Occupied</div>
     </div>
+
+    <button id="surveynote" onclick="showSurveyNote()">&#9888; Layout only &mdash; not a boundary survey</button>
   </div>
 
   <div id="selbar">
@@ -333,7 +340,7 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
      Export writes the whole thing back out as plain CSV and GeoJSON - the
      copy that outlives any account, any subscription, and any one person.
    ===================================================================== */
-const BUILD = 24;
+const BUILD = 25;
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -1741,6 +1748,7 @@ function letterHTML(s){
   '.plan h2{font-size:12pt;text-align:center;margin:0 0 6px;letter-spacing:.3px}' +
   '.plan .who{text-align:center;margin:0 0 16px;font-size:11pt}' +
   '.plan .key{font-size:9.5pt;color:#333;margin-top:12px;text-align:justify}' +
+  '.caveat{font-size:9.5pt;text-align:justify;border:1px solid #000;padding:9px 11px;margin-top:14px}' +
   '@media screen{body{background:#fff;max-width:7in;margin:28px auto;padding:0 24px}' +
   '.plan{border-top:2px dashed #bbb;margin-top:40px;padding-top:28px}}' +
   '</style></head><body>' +
@@ -1765,6 +1773,7 @@ function letterHTML(s){
     '<p>WITHIN 180 DAYS OF A BURIAL THE FAMILY WILL BE REQUIRED TO MARK THE GRAVE SITE WITH A PERMANENT ' +
     'MARKER STATING THE INDIVIDUAL&rsquo;S FULL NAME, DATE OF BIRTH AND DATE OF DEATH.</p>' +
     '<p>PLEASE SEE &ldquo;MILLFIELD CEMETERY POLICIES&rdquo; FOR OTHER RULES &amp; REGULATIONS.</p>' +
+    '<p class="caveat">' + SURVEY_CAVEAT + '</p>' +
   '</div>' +
   '<div class="sign"><div>PURCHASER</div><div>CEMETERY COMMITTEE RECORDER</div></div>' +
   '<div class="foot">Recorded ' + esc(fmtDate((s.at || '').slice(0,10)) || '') +
@@ -1777,8 +1786,9 @@ function letterHTML(s){
       (plots.length === 1 ? '' : 's') + ' &middot; ' + esc(plots.join(', ')) + '</p>' +
     plotDiagram(s.plotIds) +
     '<p class="key"><b>Filled squares</b> are the plots purchased. Surrounding plots are shown for bearings, ' +
-      'each with its lot number; large letters are the cemetery sections. Drawn from the church&rsquo;s survey, ' +
-      'north to the top.</p>' +
+      'each with its lot number; large letters are the cemetery sections. Drawn from the church&rsquo;s own ' +
+      'layout, north to the top.</p>' +
+    '<p class="caveat">' + SURVEY_CAVEAT + '</p>' +
     '<div class="sign"><div>PURCHASER</div><div>CEMETERY COMMITTEE RECORDER</div></div>' +
   '</div>' +
   '</body></html>';
@@ -2184,6 +2194,31 @@ function toggleMenu(){
 }
 function closeMenu(){ $('#menu').classList.remove('on'); }
 
+/* ---- the caveat, in one place, used on the map, the letter and About ----
+   The church has a survey of its property line. It has never had one tying the
+   cemetery's own plots to that line - the committee decided against the
+   expense, and instead a plot is proved when the purchaser sets the corner
+   markers. So the app must not imply an accuracy it does not have. */
+const SURVEY_CAVEAT =
+  'Plot positions are the church’s own layout, not a boundary survey. The property line shown is from ' +
+  'the church’s survey, but the plots have never been surveyed against it. Plots near the line may not ' +
+  'exist as drawn, and a plot is confirmed when the purchaser sets the four corner markers.';
+
+function showSurveyNote(){
+  openPanel(
+    '<h2>About the plot positions</h2>' +
+    '<p class="note" style="margin-top:0">' + SURVEY_CAVEAT + '</p>' +
+    '<div class="sec-h">What the map is good for</div>' +
+    '<p class="note" style="margin-top:0">Finding a grave, and seeing what lies around it. Plot to plot and ' +
+      'plot to corner marker, the layout is accurate &mdash; it all came off one drawing. Stand at a marked ' +
+      'corner post and count along, and the map will agree with you.</p>' +
+    '<div class="sec-h">What it is not good for</div>' +
+    '<p class="note" style="margin-top:0">Deciding where the property line falls. That is a surveyor&rsquo;s ' +
+      'work, and the committee has chosen to prove each plot as it is sold rather than survey the whole ' +
+      'cemetery.</p>' +
+    '<button class="btn sec" onclick="closePanel()">Close</button>');
+}
+
 function showAbout(){
   openPanel(
     '<h2>Millfield Church Cemetery</h2>' +
@@ -2197,6 +2232,8 @@ function showAbout(){
     '<p class="note" style="margin-top:0">Record burials and sales, print a record of purchase, keep the ledger, ' +
       'and track the ' + POST_DAYS + ' days for corner markers and the ' + STONE_DAYS + ' days for a headstone. ' +
       'Purchasers&rsquo; addresses, telephone numbers and prices are kept private and need a sign-in.</p>' +
+    '<div class="sec-h">The plot positions</div>' +
+    '<p class="note" style="margin-top:0">' + SURVEY_CAVEAT + '</p>' +
     '<div class="sec-h">Keeping it</div>' +
     '<p class="note" style="margin-top:0">The record lives in the cloud, free, and any committee member can add ' +
       'the next one. <b>Export the whole record</b> writes it all out as plain files that Excel and any mapping ' +
