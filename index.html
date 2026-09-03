@@ -164,6 +164,9 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
   text-shadow:0 0 3px #000,0 0 3px #000,0 0 5px #000;pointer-events:none;white-space:nowrap}
 .sectionletter{font:700 19px/1 -apple-system,sans-serif;color:#F4ECD9;
   text-shadow:0 0 4px #000,0 0 4px #000;pointer-events:none}
+.lotname{font:700 13px/1.15 -apple-system,sans-serif;color:#FBEFC9;text-align:center;
+  text-shadow:0 0 3px #000,0 0 3px #000,0 0 6px #000;pointer-events:none;
+  overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .post{width:14px;height:14px;border-radius:50%;background:#00E5FF;border:3px solid #06232B;
   box-shadow:0 0 0 1px #00E5FF}
 
@@ -297,7 +300,7 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
      Export writes the whole thing back out as plain CSV and GeoJSON - the
      copy that outlives any account, any subscription, and any one person.
    ===================================================================== */
-const BUILD = 19;
+const BUILD = 20;
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -313,7 +316,7 @@ const LABEL = {occupied:'Occupied', sold:'Sold', reserved:'Reserved', available:
 
 let map, baseAerial, baseVGIN, basePlain, meMarker;
 let layerPlots, layerBurials, layerLots, layerBlocks, layerNumbers, layerPosts;
-let layerAppBurials, layerSaleLots, appList = [];
+let layerAppBurials, layerSaleLots, layerLotNames, appList = [];
 
 /* A sale covers the plots it covers - a double is two plots, not one plot
    with the word "double" on it. Plots are picked on the map, then recorded
@@ -892,11 +895,6 @@ function init(){
 
   L.geoJSON(D.boundary, {style:{color:'#F4ECD9', weight:2, fill:false, dashArray:'6 5'}}).addTo(map);
 
-  layerLots = L.geoJSON(D.lots, {
-    style:{color:'#F0E2BC', weight:2, fillOpacity:0.06, fillColor:'#F0E2BC'},
-    onEachFeature:function(f,l){ l.on('click', function(e){ L.DomEvent.stop(e); showLot(f.properties); }); }
-  }).addTo(map);
-
   layerPlots = L.geoJSON(D.plots, {
     style: function(f){ return plotStyle(f.properties); },
     onEachFeature:function(f,l){
@@ -906,6 +904,19 @@ function init(){
       });
     }
   }).addTo(map);
+
+  /* AFTER the plots, deliberately. Drawn before them, the lot outlines end up
+     underneath 565 filled squares and cannot be seen at all - which looked
+     like the layer failing to load until you toggled it back on. */
+  layerLots = L.geoJSON(D.lots, {
+    style:{color:'#F4E3B6', weight:2.5, fillOpacity:0.05, fillColor:'#F4E3B6'},
+    onEachFeature:function(f,l){ l.on('click', function(e){ L.DomEvent.stop(e); showLot(f.properties); }); }
+  }).addTo(map);
+
+  /* The family name across its own ground - but only where the lot is big
+     enough on screen to hold it. Drawn for all 56 at once they land in a heap;
+     this way they appear as you come in, lot by lot, and never collide. */
+  layerLotNames = L.layerGroup();
 
   layerBurials = L.geoJSON(D.burials, {
     pointToLayer:function(f,ll){ return L.circleMarker(ll,{radius:6, weight:2, color:'#F4ECD9',
@@ -942,11 +953,14 @@ function init(){
   map.fitBounds(layerPlots.getBounds().pad(0.12));
 
   const labels = function(){
-    const want = map.getZoom() >= 20 && $('#layers input[data-l="numbers"]').checked;
+    const z = map.getZoom();
+    const want = z >= 20 && $('#layers input[data-l="numbers"]').checked;
     if(want && !map.hasLayer(layerNumbers)) layerNumbers.addTo(map);
     if(!want && map.hasLayer(layerNumbers)) map.removeLayer(layerNumbers);
+    rebuildLotNames();
   };
   map.on('zoomend', labels);
+  map.on('moveend', rebuildLotNames);   // names follow you across the ground
   window._labels = labels;
   labels();
 
@@ -1426,6 +1440,39 @@ function saleOutline(ids){
               .map(k => [[seen[k].a[1], seen[k].a[0]], [seen[k].b[1], seen[k].b[0]]]);
 }
 
+/* A family name is drawn only when its own lot is wide enough on screen to
+   carry it - about 84 pixels. Zoomed out that is none of them; coming in, they
+   arrive one at a time over their own ground, which is how a name on a map
+   should behave. */
+function rebuildLotNames(){
+  if(!layerLotNames || !map) return;
+  layerLotNames.clearLayers();
+  const on = $('#layers input[data-l="lots"]');
+  if(!on || !on.checked){
+    if(map.hasLayer(layerLotNames)) map.removeLayer(layerLotNames);
+    return;
+  }
+  const view = map.getBounds();
+  D.lots.features.forEach(function(f){
+    if(!f.properties.owner) return;
+    let n = -90, s = 90, e = -180, w = 180;
+    f.geometry.coordinates[0].forEach(function(p){
+      if(p[1] > n) n = p[1]; if(p[1] < s) s = p[1];
+      if(p[0] > e) e = p[0]; if(p[0] < w) w = p[0];
+    });
+    if(!view.intersects([[s,w],[n,e]])) return;
+    const a = map.latLngToLayerPoint([n,w]), b = map.latLngToLayerPoint([s,e]);
+    const wide = Math.abs(b.x - a.x), tall = Math.abs(b.y - a.y);
+    if(Math.max(wide, tall) < 84 || Math.min(wide, tall) < 26) return;
+    L.marker([(n+s)/2, (e+w)/2], {interactive:false, icon:L.divIcon({className:'',
+      html:'<div class="lotname" style="width:' + Math.round(Math.max(wide, 90)) + 'px">' +
+           esc(f.properties.owner) + '</div>',
+      iconSize:[Math.round(Math.max(wide, 90)), 18],
+      iconAnchor:[Math.round(Math.max(wide, 90)/2), 9]})}).addTo(layerLotNames);
+  });
+  if(layerLotNames.getLayers().length && !map.hasLayer(layerLotNames)) layerLotNames.addTo(map);
+}
+
 function rebuildSaleLots(){
   if(!layerSaleLots) return;
   layerSaleLots.clearLayers();
@@ -1827,6 +1874,7 @@ function setLayer(key, on){
   if(key === 'aerial'){ aerialShow(on); return; }
   if(key === 'survey'){ surveyShow(on); return; }
   if(key === 'numbers'){ window._labels(); return; }
+  if(key === 'lots'){ window._labels(); }        // the names follow the outlines
   if(key === 'burials'){   // the graves layer is two layers: surveyed, and recorded since
     if(on && !map.hasLayer(layerAppBurials)) layerAppBurials.addTo(map);
     if(!on && map.hasLayer(layerAppBurials)) map.removeLayer(layerAppBurials);
