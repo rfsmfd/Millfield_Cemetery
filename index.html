@@ -68,6 +68,11 @@ body.isadmin .adminflag{display:inline-flex}
 #surveynote{position:absolute;left:10px;bottom:130px;z-index:600;max-width:250px;text-align:left;
   background:rgba(244,236,217,.95);border:1px solid var(--line);border-radius:9px;
   padding:8px 11px;font-size:14px;line-height:1.35;color:var(--ink2)}
+/* On a phone it sits along the bottom in the gap between the legend and the
+   zoom buttons, rather than stacked above the legend where it crowds the map. */
+@media (max-width: 899px){
+  #surveynote{left:126px;right:54px;bottom:10px;max-width:none;text-align:center;padding:8px 9px}
+}
 
 #mapbtns{position:absolute;right:10px;top:10px;z-index:600;display:flex;flex-direction:column;gap:8px}
 #mapbtns button{width:48px;height:48px;border-radius:11px;border:1px solid var(--line);
@@ -340,7 +345,7 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
      Export writes the whole thing back out as plain CSV and GeoJSON - the
      copy that outlives any account, any subscription, and any one person.
    ===================================================================== */
-const BUILD = 26;
+const BUILD = 27;
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
