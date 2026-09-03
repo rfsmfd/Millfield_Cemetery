@@ -290,7 +290,7 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
       <div class="row"><span class="sw" style="background:#5A5751"></span>Occupied</div>
     </div>
 
-    <button id="surveynote" onclick="showSurveyNote()">&#9888; Layout only &mdash; not a boundary survey</button>
+    <button id="surveynote" onclick="showSurveyNote()">&#9888; Layout only &mdash; not a boundary survey<span id="overcount"></span></button>
   </div>
 
   <div id="selbar">
@@ -340,7 +340,7 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
      Export writes the whole thing back out as plain CSV and GeoJSON - the
      copy that outlives any account, any subscription, and any one person.
    ===================================================================== */
-const BUILD = 25;
+const BUILD = 26;
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -581,6 +581,36 @@ function plotById(id){
   const f = D.plots.features.find(x => x.properties.id === +id);
   return f ? f.properties : null;
 }
+/* ---- plots drawn over the property line ----
+   The church's survey gives the line; the cemetery layout was never surveyed
+   against it. Where a plot as drawn crosses that line it is marked, because a
+   green square a family could point at and ask to buy ought to say for itself
+   that it may not exist. Marked from the drawing, not from a survey - which is
+   the whole point of the caveat. */
+function markBoundaryDoubt(){
+  const bnd = D.boundary && D.boundary.features[0];
+  if(!bnd) return 0;
+  const R = 111320, latf = Math.cos(36.879 * Math.PI/180);
+  const poly = bnd.geometry.coordinates[0].map(function(p){ return [p[0]*R*latf, p[1]*R]; });
+  const inside = function(pt){
+    let c = false;
+    for(let i = 0, j = poly.length - 1; i < poly.length; j = i++){
+      const xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1];
+      if(((yi > pt[1]) !== (yj > pt[1])) && (pt[0] < (xj-xi)*(pt[1]-yi)/(yj-yi) + xi)) c = !c;
+    }
+    return c;
+  };
+  let n = 0;
+  D.plots.features.forEach(function(f){
+    const over = f.geometry.coordinates[0].some(function(p){
+      return !inside([p[0]*R*latf, p[1]*R]);
+    });
+    f.properties.overLine = over;
+    if(over) n++;
+  });
+  return n;
+}
+
 function plotCenter(f){
   const ring = f.geometry.coordinates[0];
   let x = 0, y = 0;
@@ -921,6 +951,7 @@ async function load(){
   const names = ['plots','burials','lots','blocks','posts','boundary'];
   const res = await Promise.all(names.map(n => fetch('data/' + n + '.geojson').then(r => r.json())));
   names.forEach(function(n,i){ D[n] = res[i]; });
+  markBoundaryDoubt();
   findDuplicateLabels();
   loadStored();
   cloudInit();
@@ -1007,6 +1038,9 @@ function init(){
   window._labels = labels;
   labels();
 
+  const over = D.plots.features.filter(f => f.properties.overLine).length;
+  if(over) $('#overcount').textContent = ' · ' + over + ' plots over the line';
+
   refreshCounts();
   wire();
 }
@@ -1015,8 +1049,11 @@ function plotStyle(p){
   const st = statusOf(p);
   if(saleSel.has(p.id)) return {color:'#1F6FEB', weight:4, opacity:1, fillColor:'#1F6FEB', fillOpacity:.5};
   const own = deviceOnly(p.id);
+  // drawn over the property line: a broken red edge, so it reads as unsettled
+  if(p.overLine) return {color:'#8C2F26', weight:2, opacity:.95, dashArray:'4 3',
+                         fillColor: COLOR[st], fillOpacity:.5};
   return {color: own ? '#7A4418' : '#20180F', weight: own ? 2.5 : 1,
-          opacity: own ? 1 : .55, fillColor: COLOR[st], fillOpacity:.62};
+          opacity: own ? 1 : .55, fillColor: COLOR[st], fillOpacity:.62, dashArray:null};
 }
 
 function refreshCounts(){
@@ -1156,6 +1193,12 @@ function showPlot(id){
       ? '<div style="color:var(--ink3);font-size:15px">Plot number set by the committee</div>' : '') +
     '<span class="tag ' + st + '">' + LABEL[st] + '</span>' +
     (deviceOnly(id) ? ' <span class="tag device">On this device only</span>' : '') +
+    (p.overLine
+      ? '<div class="overdue" style="margin-top:12px"><b>This plot is drawn over the property line.</b>' +
+        '<p class="note" style="margin-top:6px">It may not exist as drawn. The cemetery layout has never been ' +
+        'surveyed against the church&rsquo;s property line, so a plot here is only proved when the corner ' +
+        'markers are set. Speak to the committee before selling it.</p></div>'
+      : '') +
     '<div style="margin-top:14px">' +
       (owner      ? '<div class="kv"><span class="k">Lot owner</span><span class="v">' + esc(owner) + '</span></div>' : '') +
       (p.lotsize  ? '<div class="kv"><span class="k">Lot size</span><span class="v">' + esc(p.lotsize) + '</span></div>' : '') +
@@ -1360,6 +1403,16 @@ function formSale(){
       ? '<p class="note" style="color:#8C2F26"><b>Careful:</b> ' + already.length + ' of these ' +
         (already.length === 1 ? 'is' : 'are') + ' already occupied or reserved. Check before you save.</p>'
       : '') +
+    (function(){
+      const over = ids.filter(function(i){ const p = plotById(i); return p && p.overLine; });
+      return over.length
+        ? '<div class="overdue"><b>' + over.length + ' of these plots ' + (over.length === 1 ? 'is' : 'are') +
+          ' drawn over the property line</b><p class="note" style="margin-top:6px">' +
+          esc(saleplotNames(over).join(', ')) + ' may not exist as drawn. Nothing stops you recording the ' +
+          'sale &mdash; but the purchaser proves the ground when they set the corner markers, and the ' +
+          'committee should know before money changes hands.</p></div>'
+        : '';
+    })() +
     '<button class="btn sec" onclick="startPicking(null)">&#128205; Change which plots</button>' +
     /* The survey knows the lot number; only the committee knows the section
        letter. So the number is handed over as a plain box with the lot number
@@ -1773,7 +1826,16 @@ function letterHTML(s){
     '<p>WITHIN 180 DAYS OF A BURIAL THE FAMILY WILL BE REQUIRED TO MARK THE GRAVE SITE WITH A PERMANENT ' +
     'MARKER STATING THE INDIVIDUAL&rsquo;S FULL NAME, DATE OF BIRTH AND DATE OF DEATH.</p>' +
     '<p>PLEASE SEE &ldquo;MILLFIELD CEMETERY POLICIES&rdquo; FOR OTHER RULES &amp; REGULATIONS.</p>' +
-    '<p class="caveat">' + SURVEY_CAVEAT + '</p>' +
+    '<p class="caveat">' + SURVEY_CAVEAT +
+      (function(){
+        const over = s.plotIds.filter(function(i){ const p = plotById(i); return p && p.overLine; });
+        return over.length
+          ? '<br><br><b>' + esc(saleplotNames(over).join(', ')) + ' ' +
+            (over.length === 1 ? 'is' : 'are') + ' drawn at or beyond the property line and must be ' +
+            'confirmed when the corner markers are set.</b>'
+          : '';
+      })() +
+    '</p>' +
   '</div>' +
   '<div class="sign"><div>PURCHASER</div><div>CEMETERY COMMITTEE RECORDER</div></div>' +
   '<div class="foot">Recorded ' + esc(fmtDate((s.at || '').slice(0,10)) || '') +
@@ -2205,9 +2267,15 @@ const SURVEY_CAVEAT =
   'exist as drawn, and a plot is confirmed when the purchaser sets the four corner markers.';
 
 function showSurveyNote(){
+  const over = D.plots.features.filter(f => f.properties.overLine);
   openPanel(
     '<h2>About the plot positions</h2>' +
     '<p class="note" style="margin-top:0">' + SURVEY_CAVEAT + '</p>' +
+    (over.length
+      ? '<div class="overdue"><b>' + over.length + ' plots are drawn over the line</b>' +
+        '<p class="note" style="margin-top:6px">They are outlined in broken red on the map. Those are the ones ' +
+        'that may not exist as drawn, and each is proved &mdash; or not &mdash; when its corner markers go in.</p></div>'
+      : '') +
     '<div class="sec-h">What the map is good for</div>' +
     '<p class="note" style="margin-top:0">Finding a grave, and seeing what lies around it. Plot to plot and ' +
       'plot to corner marker, the layout is accurate &mdash; it all came off one drawing. Stand at a marked ' +
