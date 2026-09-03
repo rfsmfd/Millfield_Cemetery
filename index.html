@@ -345,7 +345,7 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
      Export writes the whole thing back out as plain CSV and GeoJSON - the
      copy that outlives any account, any subscription, and any one person.
    ===================================================================== */
-const BUILD = 30;
+const BUILD = 31;
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -651,15 +651,9 @@ function appBurials(){
    where it is unique in the whole cemetery. Everywhere else the plot falls
    back to its bare number and says so, because a confident wrong plot number
    on a record of purchase is far worse than an honest incomplete one. */
-let dupLabels = new Set();
-function findDuplicateLabels(){
-  const seen = {};
-  D.plots.features.forEach(function(f){
-    const l = f.properties.label;
-    if(l) seen[l] = (seen[l] || 0) + 1;
-  });
-  dupLabels = new Set(Object.keys(seen).filter(function(l){ return seen[l] > 1; }));
-}
+/* There is no derived section letter in the data any more - the export no
+   longer writes one, because it was wrong on 263 of the 565 plots. The only
+   letters that exist are the ones the committee typed. */
 /* A plot shows its lot number, plain, exactly as the survey drew it. The
    section letter is NOT worked out from the map - that was tried and it was
    wrong on 263 plots. Where the full number matters, on a record of purchase,
@@ -958,7 +952,6 @@ async function load(){
   const res = await Promise.all(names.map(n => fetch('data/' + n + '.geojson').then(r => r.json())));
   names.forEach(function(n,i){ D[n] = res[i]; });
   markBoundaryDoubt();
-  findDuplicateLabels();
   loadStored();
   cloudInit();
   init();
