@@ -345,7 +345,7 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
      Export writes the whole thing back out as plain CSV and GeoJSON - the
      copy that outlives any account, any subscription, and any one person.
    ===================================================================== */
-const BUILD = 27;
+const BUILD = 28;
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -2312,6 +2312,9 @@ function showAbout(){
       'the next one. <b>Export the whole record</b> writes it all out as plain files that Excel and any mapping ' +
       'program can read, with no account and no subscription &mdash; keep the newest one with the church papers.</p>' +
     '<p class="note">Millfield Baptist Church Cemetery Committee &middot; ' + CHURCH.tel + '</p>' +
+    '<p class="note" style="font-size:14px">Version ' + BUILD + ' &middot; ' +
+      (navigator.onLine ? 'online' : 'no signal') + '</p>' +
+    '<button class="btn sec" onclick="location.reload()">&#8635; Check for a newer version</button>' +
     '<button class="btn sec" onclick="closePanel()">Close</button>');
 }
 
@@ -2587,7 +2590,12 @@ function checkForUpdate(){
     .catch(function(){});
 }
 document.addEventListener('visibilitychange', function(){ if(!document.hidden) checkForUpdate(); });
-setTimeout(checkForUpdate, 4000);
+/* pageshow fires when iOS brings a suspended app back without reloading it,
+   which is the usual way a home-screen app is reopened - visibilitychange
+   alone can miss it. */
+window.addEventListener('pageshow', function(){ setTimeout(checkForUpdate, 800); });
+window.addEventListener('focus', checkForUpdate);
+setTimeout(checkForUpdate, 1500);
 setInterval(checkForUpdate, 30 * 60 * 1000);
 
 load().catch(function(e){

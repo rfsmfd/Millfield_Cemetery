@@ -10,7 +10,7 @@
    Bump BUILD to match index.html when you ship. */
 // Bump on EVERY change - the number names the caches, so a stale build and a
 // stale data/*.geojson both survive a refresh until it changes.
-const BUILD = 27;
+const BUILD = 28;
 const APP   = 'mc-app-v' + BUILD;
 const DATA  = 'mc-data-v' + BUILD;
 const LIB   = 'mc-lib-v1';
@@ -47,6 +47,11 @@ self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
+
+  // Never touch the worker itself. The app fetches this file to read the
+  // current build number, so it must always come from the network - and
+  // caching each check would pile up an entry every half hour forever.
+  if (url.origin === location.origin && url.pathname.endsWith('sw.js')) return;
 
   // the app shell - always try the network so a new build is picked up
   if (req.mode === 'navigate' || (url.origin === location.origin && url.pathname.endsWith('.html'))) {
