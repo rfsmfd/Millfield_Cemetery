@@ -31,9 +31,12 @@ button{background:none;border:0;cursor:pointer}
 #topbar h1{margin:0;font-size:19px;font-weight:650;letter-spacing:-.2px}
 #topbar .sub{font-size:14px;color:var(--ink3)}
 #topbar.admin{background:#F1E3D3;border-bottom-color:var(--admin)}
-.adminflag{display:none;font-size:12px;font-weight:750;letter-spacing:.6px;text-transform:uppercase;
-  background:var(--admin);color:#FBF3E7;padding:3px 8px;border-radius:5px;margin-top:4px}
-body.isadmin .adminflag{display:inline-block}
+/* A word, not an icon. The committee opens this a few times a year and nobody
+   remembers what an unlabelled padlock does - it reads as "log out". */
+.adminflag{display:none;font-size:13px;font-weight:750;letter-spacing:.5px;text-transform:uppercase;
+  background:var(--admin);color:#FBF3E7;padding:8px 13px;border-radius:7px;margin-top:6px;
+  min-height:36px;align-items:center;gap:6px;cursor:pointer}
+body.isadmin .adminflag{display:inline-flex}
 .iconbtn{width:48px;height:48px;border-radius:11px;border:1px solid var(--line);background:var(--bg);
   display:flex;align-items:center;justify-content:center;font-size:22px;flex:0 0 auto}
 
@@ -206,7 +209,7 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
     <div style="flex:1;min-width:0">
       <h1>Millfield Cemetery</h1>
       <div class="sub" id="counts">&nbsp;</div>
-      <span class="adminflag" id="adminFlag">Committee mode</span>
+      <button class="adminflag" id="adminFlag" onclick="adminPanel()">&#9881; Committee tools</button>
     </div>
     <button class="iconbtn" id="btnSearch" aria-label="Search by name">&#128269;</button>
   </div>
@@ -300,7 +303,7 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
      Export writes the whole thing back out as plain CSV and GeoJSON - the
      copy that outlives any account, any subscription, and any one person.
    ===================================================================== */
-const BUILD = 20;
+const BUILD = 21;
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -2202,9 +2205,10 @@ function adminOn(){
   isAdmin = true;
   document.body.classList.add('isadmin');
   $('#topbar').classList.add('admin');
-  $('#btnAdmin').textContent = '🔓';
+  $('#btnAdmin').textContent = '🧰';                    // tools, not a padlock
+  $('#btnAdmin').title = 'Committee tools — the ledger, letters, exports';
   $('#btnAdmin').classList.add('on','adminbtn');
-  toast('Committee mode — tap a plot to record a burial or sale', 3400);
+  toast('Committee mode — tap a plot to record on it, or ⚙ Committee tools for the ledger', 5000);
 }
 function adminOff(quiet){
   if(!isAdmin) return;
@@ -2212,6 +2216,7 @@ function adminOff(quiet){
   document.body.classList.remove('isadmin');
   $('#topbar').classList.remove('admin');
   $('#btnAdmin').textContent = '🔒';
+  $('#btnAdmin').title = 'Committee sign-in';
   $('#btnAdmin').classList.remove('on');
   ['posts','aerial','survey'].forEach(function(k){
     const cb = $('#layers input[data-l="' + k + '"]');
