@@ -1,0 +1,16 @@
+# Kept off the public repo deliberately.
+#
+# _tools/marker-reminder.gs carries all four committee email addresses, and
+# firestore.rules names the founder's. Email addresses in a public GitHub
+# repository are scraped within days. None of these files are needed to serve
+# the map - the rules live on Firebase, the export script runs on this machine,
+# and the reminder script runs in Google Apps Script.
+_tools/
+firestore.rules
+firebase.json
+.firebaserc
+
+# working files
+index.html.bak
+Start Cemetery Map.bat
+*.log

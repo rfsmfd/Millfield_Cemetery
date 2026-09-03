@@ -1,0 +1,2234 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Millfield Cemetery</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#E9DFC6">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Millfield Cemetery">
+<link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%22Millfield%20Cemetery%22%2C%22short_name%22%3A%22Cemetery%22%2C%22start_url%22%3A%22.%22%2C%22scope%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23E9DFC6%22%2C%22theme_color%22%3A%22%23E9DFC6%22%7D">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='512' height='512' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='96' fill='%23E9DFC6'/%3E%3Cpath d='M256 90 L256 430 M160 190 L352 190' stroke='%2337543C' stroke-width='46' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+:root{
+  --bg:#E9DFC6; --surface:#F4ECD9; --sunk:#DCD0B1; --line:#C0B08C;
+  --ink:#211B11; --ink2:#463B29; --ink3:#5A4D34;
+  --accent:#37543C; --accent2:#587A5D; --admin:#7A4418;
+  --safe-top:env(safe-area-inset-top,0px); --safe-bot:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--ink);
+  font:17px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;-webkit-text-size-adjust:100%}
+button,input,select,textarea{font:inherit;color:inherit}
+button{background:none;border:0;cursor:pointer}
+
+#shell{display:flex;flex-direction:column;height:100%}
+#topbar{flex:0 0 auto;padding:calc(var(--safe-top) + 10px) 14px 10px;
+  background:var(--surface);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+#topbar h1{margin:0;font-size:19px;font-weight:650;letter-spacing:-.2px}
+#topbar .sub{font-size:14px;color:var(--ink3)}
+#topbar.admin{background:#F1E3D3;border-bottom-color:var(--admin)}
+.adminflag{display:none;font-size:12px;font-weight:750;letter-spacing:.6px;text-transform:uppercase;
+  background:var(--admin);color:#FBF3E7;padding:3px 8px;border-radius:5px;margin-top:4px}
+body.isadmin .adminflag{display:inline-block}
+.iconbtn{width:48px;height:48px;border-radius:11px;border:1px solid var(--line);background:var(--bg);
+  display:flex;align-items:center;justify-content:center;font-size:22px;flex:0 0 auto}
+
+#map{flex:1 1 auto;position:relative}
+.leaflet-container{background:#CEC2A4;font:inherit}
+
+#legend{position:absolute;left:10px;bottom:10px;z-index:600;background:rgba(244,236,217,.95);
+  border:1px solid var(--line);border-radius:11px;padding:10px 12px;font-size:14px;line-height:1.7}
+#legend .row{display:flex;align-items:center;gap:8px;white-space:nowrap}
+#legend .sw{width:16px;height:16px;border-radius:3px;border:1px solid rgba(0,0,0,.35);flex:0 0 auto}
+
+#mapbtns{position:absolute;right:10px;top:10px;z-index:600;display:flex;flex-direction:column;gap:8px}
+#mapbtns button{width:48px;height:48px;border-radius:11px;border:1px solid var(--line);
+  background:rgba(244,236,217,.95);font-size:21px;display:flex;align-items:center;justify-content:center}
+#mapbtns button.on{background:var(--accent);color:#F4ECD9;border-color:var(--accent)}
+#mapbtns button.adminbtn.on{background:var(--admin);border-color:var(--admin)}
+.adminonly{display:none !important}
+body.isadmin .adminonly{display:flex !important}
+
+#selbar{flex:0 0 auto;display:none;align-items:center;gap:12px;padding:12px 14px;
+  background:#1F6FEB;color:#F4F8FF;border-top:1px solid #16509F}
+#selbar.on{display:flex}
+#selcount{flex:1;min-width:0;font-size:15px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.selbtns{display:flex;gap:8px;flex:0 0 auto}
+#selbar button{min-height:46px;padding:12px 18px;border-radius:11px;font-size:16px;font-weight:680}
+.selcancel{background:rgba(255,255,255,.18);color:#F4F8FF}
+.seldone{background:#F4F8FF;color:#16509F}
+.seldone:disabled{opacity:.45}
+
+#filters{flex:0 0 auto;display:flex;gap:8px;padding:10px 12px;background:var(--surface);
+  border-top:1px solid var(--line);overflow-x:auto;-webkit-overflow-scrolling:touch;
+  padding-bottom:calc(var(--safe-bot) + 10px)}
+#filters::-webkit-scrollbar{display:none}
+.chip{flex:0 0 auto;background:var(--bg);border:1px solid var(--line);border-radius:24px;
+  padding:12px 16px;font-size:15px;font-weight:600;min-height:46px;display:inline-flex;align-items:center;gap:7px}
+.chip.on{background:var(--accent);color:#F4ECD9;border-color:var(--accent)}
+.chip .n{font-size:14px;opacity:.8;font-variant-numeric:tabular-nums}
+
+.panelbox{position:absolute;left:10px;top:10px;z-index:700;display:none;width:184px;
+  background:rgba(244,236,217,.97);border:1px solid var(--line);border-radius:12px;padding:9px}
+.panelbox.on{display:block}
+.panelbox .ttl{font-size:14px;font-weight:700;margin-bottom:7px;display:flex;align-items:center;justify-content:space-between}
+.panelbox .x{width:30px;height:30px;border-radius:8px;font-size:19px;line-height:1;color:var(--ink3);
+  border:1px solid var(--line);background:var(--bg)}
+.panelbox label{display:flex;align-items:center;gap:9px;font-size:14px;min-height:38px;cursor:pointer}
+.panelbox input[type=checkbox]{width:22px;height:22px;accent-color:var(--accent);flex:0 0 auto}
+.panelbox .row{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--ink3)}
+.panelbox .row input[type=range]{flex:1;min-width:0;height:34px}
+.panelbox .sep{border-top:1px solid var(--line);margin:8px 0 4px;padding-top:6px;
+  font-size:11px;font-weight:750;letter-spacing:.6px;text-transform:uppercase;color:var(--admin)}
+
+#panel{position:fixed;inset:0;z-index:900;background:rgba(30,26,18,.6);display:none;align-items:flex-end}
+#panel.on{display:flex}
+#panelbody{background:var(--bg);width:100%;max-height:90%;border-radius:18px 18px 0 0;
+  border-top:1px solid var(--line);overflow-y:auto;-webkit-overflow-scrolling:touch;
+  padding:8px 16px calc(var(--safe-bot) + 22px)}
+.grab{width:40px;height:5px;background:var(--line);border-radius:3px;margin:8px auto 14px}
+#panelbody h2{margin:0 0 4px;font-size:22px;font-weight:680;line-height:1.2}
+.kv{display:flex;justify-content:space-between;gap:14px;padding:11px 0;border-bottom:1px solid var(--sunk);font-size:16px}
+.kv .k{color:var(--ink3)}
+.kv .v{font-weight:650;text-align:right}
+.tag{display:inline-block;font-size:14px;font-weight:700;padding:4px 10px;border-radius:6px;
+  background:var(--sunk);color:var(--ink2);margin-top:6px}
+.tag.occupied{background:#DAD6CE;color:#3B3833}
+.tag.reserved{background:#F0DFBB;color:#6B4A0F}
+.tag.sold{background:#D6E1EC;color:#2A4763}
+.tag.available{background:#D3E5D5;color:#254F2B}
+.tag.device{background:#EADCC8;color:#7A4418}
+.btn{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;min-height:54px;
+  background:var(--accent);color:#F6F1E4;border-radius:12px;font-size:17px;font-weight:680;
+  margin-top:12px;text-decoration:none;padding:14px;text-align:center}
+.btn.sec{background:var(--sunk);color:var(--ink);border:1px solid var(--line)}
+.btn.adm{background:var(--admin)}
+.sec-h{font-size:12px;font-weight:750;letter-spacing:.7px;text-transform:uppercase;color:var(--admin);
+  margin:20px 0 8px;padding-bottom:5px;border-bottom:1px solid var(--line)}
+.note{color:var(--ink3);font-size:15.5px;margin:12px 0 0;line-height:1.5}
+label.f{display:block;margin-bottom:11px}
+label.f > span{display:block;font-size:13px;font-weight:700;letter-spacing:.4px;color:var(--ink3);
+  text-transform:uppercase;margin-bottom:4px}
+input[type=text],input[type=email],input[type=number],input[type=date],input[type=password],select,textarea{
+  width:100%;background:var(--surface);border:1px solid var(--line);border-radius:10px;
+  padding:14px 13px;font-size:16px;min-height:52px}
+textarea{min-height:80px;resize:vertical;line-height:1.45}
+.dparts{display:flex;gap:8px}
+.dparts input{flex:1.1;min-width:0}
+.dparts select{flex:1.3;min-width:0}
+.dparts select:last-child{flex:.9}
+.hint{display:block;font-size:13px;color:var(--ink3);margin-top:5px;text-transform:none;letter-spacing:0;font-weight:400}
+.checkrow{display:flex;align-items:center;gap:12px;min-height:54px;background:var(--surface);
+  border:1px solid var(--line);border-radius:10px;padding:12px 13px;margin-bottom:11px;cursor:pointer}
+.checkrow input{width:26px;height:26px;accent-color:var(--admin);flex:0 0 auto}
+.checkrow span{font-size:16px;font-weight:650}
+.overdue{background:#F3DEDA;border:1px solid #C58C84;border-radius:11px;padding:12px 14px;margin-top:12px}
+.overdue b{color:#8C2F26}
+.overdue .row{display:flex;justify-content:space-between;gap:12px;padding:7px 0;font-size:15px}
+.ledgerchips{display:flex;gap:7px;overflow-x:auto;padding:2px 0 12px}
+.ledgerchips .chip{min-height:40px;padding:9px 14px;font-size:14px}
+.ledgerwrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:11px}
+table.ledger{border-collapse:collapse;width:100%;font-size:14.5px;background:var(--surface)}
+table.ledger th,table.ledger td{padding:10px 12px;text-align:left;white-space:nowrap;
+  border-bottom:1px solid var(--sunk)}
+table.ledger th{position:sticky;top:0;background:var(--sunk);font-size:12px;font-weight:750;
+  letter-spacing:.5px;text-transform:uppercase;color:var(--ink2);cursor:pointer}
+table.ledger tbody tr:last-child td{border-bottom:0}
+table.ledger tr.late td{background:#F3DEDA}
+table.ledger .src{font-size:12px;color:var(--ink3)}
+
+#search{position:absolute;left:10px;right:66px;top:10px;z-index:650;display:none}
+#search.on{display:block}
+#search input{width:100%;min-height:48px;background:rgba(244,236,217,.97);border:1px solid var(--line);
+  border-radius:11px;padding:12px 14px;font-size:17px}
+#results{margin-top:6px;background:rgba(244,236,217,.98);border:1px solid var(--line);
+  border-radius:11px;max-height:46vh;overflow-y:auto;display:none}
+#results.on{display:block}
+#results button{display:block;width:100%;text-align:left;padding:13px 14px;
+  border-bottom:1px solid var(--sunk);font-size:16px;min-height:52px}
+#results button:last-child{border-bottom:0}
+#results .nm{font-weight:650}
+#results .dt{font-size:14px;color:var(--ink3);margin-top:2px}
+.empty{padding:16px;color:var(--ink3);font-size:16px}
+
+.plotnum{font:700 13px/1 -apple-system,sans-serif;color:#fff;text-align:center;
+  text-shadow:0 0 3px #000,0 0 3px #000,0 0 5px #000;pointer-events:none;white-space:nowrap}
+.sectionletter{font:700 19px/1 -apple-system,sans-serif;color:#F4ECD9;
+  text-shadow:0 0 4px #000,0 0 4px #000;pointer-events:none}
+.post{width:14px;height:14px;border-radius:50%;background:#00E5FF;border:3px solid #06232B;
+  box-shadow:0 0 0 1px #00E5FF}
+
+#toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%) translateY(10px);z-index:1200;
+  background:rgba(33,27,17,.92);color:#F4ECD9;padding:11px 18px;border-radius:22px;font-size:15px;
+  font-weight:600;opacity:0;pointer-events:none;transition:.22s;max-width:86%;text-align:center}
+#toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+#loading{position:fixed;inset:0;background:var(--bg);z-index:2000;display:flex;
+  align-items:center;justify-content:center;flex-direction:column;gap:14px;font-size:17px;color:var(--ink2)}
+</style>
+</head>
+<body>
+
+<div id="loading"><div style="font-size:44px">&#9962;</div><div>Loading the cemetery&hellip;</div></div>
+
+<div id="shell">
+  <div id="topbar">
+    <div style="flex:1;min-width:0">
+      <h1>Millfield Cemetery</h1>
+      <div class="sub" id="counts">&nbsp;</div>
+      <span class="adminflag" id="adminFlag">Committee mode</span>
+    </div>
+    <button class="iconbtn" id="btnSearch" aria-label="Search by name">&#128269;</button>
+  </div>
+
+  <div id="map">
+    <div id="search">
+      <input type="search" id="q" placeholder="A surname, or a plot like M20&hellip;" autocomplete="off">
+      <div id="results"></div>
+    </div>
+
+    <div id="layers" class="panelbox">
+      <div class="ttl">Show <button class="x" id="layersClose">&times;</button></div>
+      <label><input type="checkbox" data-l="plots" checked> Plots</label>
+      <label><input type="checkbox" data-l="burials" checked> Graves</label>
+      <label><input type="checkbox" data-l="lots" checked> Family lots</label>
+      <label><input type="checkbox" data-l="numbers" checked> Plot numbers</label>
+      <div class="sep adminonly">Committee only</div>
+      <label class="adminonly"><input type="checkbox" data-l="blocks" checked> Section letters</label>
+      <label class="adminonly"><input type="checkbox" data-l="posts"> Corner posts</label>
+      <label class="adminonly"><input type="checkbox" data-l="aerial"> Drone photo</label>
+      <label class="adminonly"><input type="checkbox" data-l="survey"> Survey plat</label>
+    </div>
+
+    <div id="aerialbar" class="panelbox">
+      <div class="ttl">Drone photo <button class="x" id="aerialClose">&times;</button></div>
+      <div class="row"><span>fade</span><input type="range" id="aerialOp" min="10" max="100" value="100"></div>
+    </div>
+
+    <div id="surveybar" class="panelbox">
+      <div class="ttl">Survey plat <button class="x" id="surveyClose">&times;</button></div>
+      <div class="row"><span>fade</span><input type="range" id="surveyOp" min="10" max="100" value="85"></div>
+    </div>
+
+    <div id="mapbtns">
+      <button id="btnBase" title="Aerial or map">&#128752;</button>
+      <button id="btnLayers" title="What to show">&#9776;</button>
+      <button id="btnLocate" title="Where am I">&#128205;</button>
+      <button id="btnAerial" class="adminbtn adminonly" title="Drone photo">&#128444;</button>
+      <button id="btnSurvey" class="adminbtn adminonly" title="Survey plat">&#128208;</button>
+      <button id="btnAdmin" title="Committee sign-in">&#128274;</button>
+    </div>
+
+    <div id="legend">
+      <div class="row"><span class="sw" style="background:#3E7A46"></span>Available</div>
+      <div class="row"><span class="sw" style="background:#B07A1E"></span>Reserved</div>
+      <div class="row"><span class="sw" style="background:#4E6E8C"></span>Sold</div>
+      <div class="row"><span class="sw" style="background:#5A5751"></span>Occupied</div>
+    </div>
+  </div>
+
+  <div id="selbar">
+    <div id="selcount">no plots</div>
+    <div class="selbtns">
+      <button class="selcancel" onclick="cancelPicking()">Cancel</button>
+      <button class="seldone" id="seldone" onclick="donePicking()">Next &rarr;</button>
+    </div>
+  </div>
+
+  <div id="filters">
+    <button class="chip on" data-f="all">All plots <span class="n" id="cAll"></span></button>
+    <button class="chip" data-f="available">Available <span class="n" id="cAvail"></span></button>
+    <button class="chip" data-f="graves">Graves <span class="n" id="cGraves"></span></button>
+    <button class="chip" data-f="veterans">Veterans <span class="n" id="cVets"></span></button>
+  </div>
+</div>
+
+<div id="panel"><div id="panelbody"><div class="grab"></div><div id="panelcontent"></div></div></div>
+<div id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://unpkg.com/leaflet-imageoverlay-rotated@0.2.1/Leaflet.ImageOverlay.Rotated.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script>
+/* =====================================================================
+   MILLFIELD CEMETERY
+
+   Two doors:
+     public     - the map and the layers a visitor needs
+     committee  - signed in: every layer, plus recording burials and sales
+
+   WHERE THE TRUTH LIVES
+     The drawing  (plots, lots, boundary, corner posts) came from the
+     surveyed ArcGIS geodatabase, exported once into data/. That work is
+     finished and does not repeat.
+     The record   (who is buried where, what has sold, to whom, when) lives
+     in the cloud, written from this app by the committee and read by
+     everybody. That is the part that keeps changing forever, and keeping
+     it up needs no GIS software and no training.
+     Export writes the whole thing back out as plain CSV and GeoJSON - the
+     copy that outlives any account, any subscription, and any one person.
+   ===================================================================== */
+const BUILD = 17;
+const $  = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* The life of a plot, in the committee's own terms:
+     available - nobody has bought it
+     reserved  - paid for, but the corner markers are not yet set
+     sold      - markers set, so the ground is permanently in their name
+     occupied  - somebody is buried in it
+   The step from reserved to sold is exactly what the 120 days are for. */
+const COLOR = {occupied:'#5A5751', sold:'#4E6E8C', reserved:'#B07A1E', available:'#3E7A46'};
+const LABEL = {occupied:'Occupied', sold:'Sold', reserved:'Reserved', available:'Available'};
+
+let map, baseAerial, baseVGIN, basePlain, meMarker;
+let layerPlots, layerBurials, layerLots, layerBlocks, layerNumbers, layerPosts;
+let layerAppBurials, layerSaleLots, appList = [];
+
+/* A sale covers the plots it covers - a double is two plots, not one plot
+   with the word "double" on it. Plots are picked on the map, then recorded
+   in one go, so the ground a family paid for cannot be sold twice. */
+let saleSel = new Set(), selMode = false;
+const SALE_PRICE = {1:200, 2:350, 4:600, 5:700};
+function saleSizeName(n){
+  return {1:'single', 2:'double', 4:'four', 5:'five'}[n] || (n + ' plots');
+}
+
+/* ---- the size of the ground, the way ArcGIS records it ----
+   LOTS.SIZEPLOT holds dimensions - "10X20", "10X40" - not the word "double".
+   The plots are drawn on a grid that is turned about 23 degrees off north, so
+   an ordinary bounding box would overstate it. This takes the smallest
+   rectangle that encloses the plots whatever its angle, by trying every edge
+   of the hull as the rectangle's side, and reports it in feet. */
+function saleFootprint(ids){
+  const R = 111320, latf = Math.cos(36.879 * Math.PI/180), FT = 3.280839895;
+  const pts = [];
+  ids.forEach(function(i){
+    const f = D.plots.features.find(x => x.properties.id === +i);
+    if(f) f.geometry.coordinates[0].forEach(function(p){ pts.push([p[0]*R*latf, p[1]*R]); });
+  });
+  if(pts.length < 3) return '';
+  // convex hull (gift wrap - a handful of points, so simplicity beats speed)
+  const start = pts.reduce(function(a,b){ return b[0] < a[0] || (b[0] === a[0] && b[1] < a[1]) ? b : a; });
+  const hull = []; let cur = start, guard = 0;
+  do{
+    hull.push(cur);
+    let next = pts[0];
+    for(const p of pts){
+      if(p === cur) continue;
+      const cross = (next[0]-cur[0])*(p[1]-cur[1]) - (next[1]-cur[1])*(p[0]-cur[0]);
+      if(next === cur || cross < 0) next = p;
+    }
+    cur = next;
+  } while(cur !== start && ++guard < 500);
+
+  let best = null;
+  for(let i = 0; i < hull.length; i++){
+    const a = hull[i], b = hull[(i+1) % hull.length];
+    const ang = Math.atan2(b[1]-a[1], b[0]-a[0]), c = Math.cos(-ang), s = Math.sin(-ang);
+    let x0 = 1e18, x1 = -1e18, y0 = 1e18, y1 = -1e18;
+    for(const p of hull){
+      const x = p[0]*c - p[1]*s, y = p[0]*s + p[1]*c;
+      if(x < x0) x0 = x; if(x > x1) x1 = x;
+      if(y < y0) y0 = y; if(y > y1) y1 = y;
+    }
+    const w = x1-x0, h = y1-y0;
+    if(!best || w*h < best.area) best = {area:w*h, w:w, h:h};
+  }
+  if(!best) return '';
+  /* Snapped to the five-foot grid the cemetery was laid out on. Measured raw,
+     eight plots come out 10x41 where the committee's own record says 10x40 -
+     a foot of drawing tolerance, not a foot of ground. */
+  const snap = m => Math.max(5, Math.round(m * FT / 5) * 5);
+  return snap(Math.min(best.w, best.h)) + 'X' + snap(Math.max(best.w, best.h));
+}
+
+/* The purchaser has 120 days from the date of purchase to set the four
+   granite corner markers, at their own expense, and to tell a committee
+   member when it is done. Only then do the plots pass permanently into
+   their name. The clock is the committee's, so the app keeps it. */
+const POST_DAYS = 120;
+/* And within 180 days of a burial the family must mark the grave with a
+   permanent marker giving the full name, date of birth and date of death.
+   A different clock, owed by a different person - the family, not the
+   purchaser - so it is tracked on the burial, not on the sale. */
+const STONE_DAYS = 180;
+function plusDays(iso, n){
+  if(!iso) return '';
+  const d = new Date(iso + 'T12:00:00');
+  if(isNaN(d)) return '';
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0,10);
+}
+function daysBetween(a, b){
+  const A = new Date(a + 'T12:00:00'), B = new Date(b + 'T12:00:00');
+  return Math.round((B - A) / 86400000);
+}
+/* The LOCAL date, not UTC. toISOString() rolls over at 8pm Virginia time, so a
+   burial recorded on a September evening was being stamped the 3rd when the
+   committee was standing there on the 2nd. */
+function today(){
+  const d = new Date();
+  return d.getFullYear() + '-' +
+    String(d.getMonth() + 1).padStart(2,'0') + '-' +
+    String(d.getDate()).padStart(2,'0');
+}
+
+/* Where a sale stands on its markers: done, still in time, or lapsed. */
+/* The clock starts the day the purchaser was told, which is the date on the
+   letter - it may be a day or two after the sale itself, and it would not be
+   fair to count days against somebody before the letter reached them. Falls
+   back to the date of purchase when no letter date is recorded. */
+function clockStart(e){ return (e && (e.letterDate || e.date)) || ''; }
+
+/* Both deadlines work the same way, so they share one piece of arithmetic:
+   done, still in time, run out, or no date on file to count from. */
+function clockState(from, days, done, doneDate){
+  if(done) return {state:'done', due: from ? plusDays(from, days) : '', on:doneDate || ''};
+  /* No date on file - most of the 56 surveyed lots are like this. There is no
+     clock to run, but it still needs confirming, so it is listed rather than
+     quietly passing as settled. */
+  if(!from) return {state:'unknown', due:''};
+  const due = plusDays(from, days);
+  const left = daysBetween(today(), due);
+  if(left < 0) return {state:'overdue', due:due, days:-left};
+  return {state:'waiting', due:due, days:left};
+}
+
+/* The purchaser's 120 days for the four granite corner markers. */
+function postState(e){
+  if(!e || !e.buyer) return null;
+  return clockState(clockStart(e), POST_DAYS, e.postsIn, e.postsDate);
+}
+
+/* The family's 180 days for the headstone. Counted from the day of the
+   burial - not the date of death, which can be weeks earlier. */
+function stoneState(e){
+  if(!e || !e.name) return null;
+  return clockState(e.buried || '', STONE_DAYS, e.stoneIn, e.stoneDate);
+}
+function burialsNeedingStones(){
+  return Object.keys(rec).map(function(id){
+    return Object.assign({plotId:+id}, rec[id]);
+  }).filter(function(e){
+    const st = stoneState(e);
+    return st && st.state !== 'done';
+  }).sort(function(a, b){ return (a.buried||'').localeCompare(b.buried||''); });
+}
+/* Every sale in the record, one entry per sale rather than per plot. */
+function allSales(){
+  const by = {};
+  Object.keys(rec).forEach(function(id){
+    const e = rec[id];
+    if(!e.buyer) return;
+    const k = e.saleId || ('plot-' + id);
+    if(!by[k]) by[k] = Object.assign({saleId:k, plotIds:[]}, e);
+    by[k].plotIds.push(+id);
+  });
+  return Object.values(by).sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
+}
+function overdueSales(){
+  return allSales().filter(function(s){
+    const st = postState(s);
+    return st && st.state === 'overdue';
+  });
+}
+let aerial = null, survey = null;
+let D = {plots:null, burials:null, lots:null, blocks:null, posts:null, boundary:null};
+let filter = 'all';
+let isAdmin = false;
+
+/* the record: the cloud is authoritative, the device copy keeps the map
+   working with no signal and catches anything written before the cloud
+   was reachable */
+let cloudRec = {};    // plot id -> record, straight from Firestore
+let localRec = {};    // plot id -> record, written on this device only
+let rec      = {};    // the merge the map actually draws
+let cloud    = {ready:false, live:false, user:null, err:null};
+
+/* ---------- small helpers ---------- */
+function toast(msg, ms){
+  const t = $('#toast'); t.textContent = msg; t.classList.add('on');
+  clearTimeout(t._h); t._h = setTimeout(function(){ t.classList.remove('on'); }, ms || 2400);
+}
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+/* Dates on old stones are often just a year, sometimes a month and year.
+   A date is stored as whatever is actually known - "1861", "1861-04" or
+   "1861-04-09" - and never padded out with a day nobody can read. */
+function fmtDate(s){
+  if(!s) return null;
+  const p = String(s).split('-');
+  if(p.length === 1) return p[0];
+  if(p.length === 2) return MONTHS[+p[1]-1] + ' ' + p[0];
+  return (+p[2]) + ' ' + MONTHS[+p[1]-1] + ' ' + p[0];
+}
+function splitDate(s){
+  const p = String(s || '').split('-');
+  return {y: p[0] || '', m: p[1] || '', d: p[2] || ''};
+}
+function joinDate(y, m, d){
+  y = (y || '').trim();
+  if(!y) return '';
+  if(!m) return y;
+  if(!d) return y + '-' + m;
+  return y + '-' + m + '-' + d;
+}
+/* Three plain boxes instead of a calendar. The calendar opens on this year
+   and scrolls forward into years nobody was ever born in, which is no use
+   to anybody standing in a graveyard. */
+function dateFields(id, label, value){
+  const v = splitDate(value);
+  const thisYear = new Date().getFullYear();
+  let ms = '<option value="">month</option>';
+  for(let i = 1; i <= 12; i++){
+    const mm = String(i).padStart(2,'0');
+    ms += '<option value="' + mm + '"' + (v.m === mm ? ' selected' : '') + '>' + MONTHS[i-1] + '</option>';
+  }
+  let ds = '<option value="">day</option>';
+  for(let i = 1; i <= 31; i++){
+    const dd = String(i).padStart(2,'0');
+    ds += '<option value="' + dd + '"' + (v.d === dd ? ' selected' : '') + '>' + i + '</option>';
+  }
+  return '<label class="f"><span>' + label + '</span><div class="dparts">' +
+    '<input type="number" id="' + id + 'Y" inputmode="numeric" placeholder="year" min="1700" max="' +
+      thisYear + '" value="' + esc(v.y) + '">' +
+    '<select id="' + id + 'M">' + ms + '</select>' +
+    '<select id="' + id + 'D">' + ds + '</select>' +
+    '</div><small class="hint">Year is enough &mdash; add month and day only if the stone shows them.</small></label>';
+}
+function readDate(id){
+  return joinDate($('#' + id + 'Y').value, $('#' + id + 'M').value, $('#' + id + 'D').value);
+}
+function years(b,d){
+  if(!b && !d) return '';
+  return (b ? String(b).slice(0,4) : '?') + ' – ' + (d ? String(d).slice(0,4) : '?');
+}
+function plotById(id){
+  const f = D.plots.features.find(x => x.properties.id === +id);
+  return f ? f.properties : null;
+}
+function plotCenter(f){
+  const ring = f.geometry.coordinates[0];
+  let x = 0, y = 0;
+  for(const p of ring){ x += p[0]; y += p[1]; }
+  return [y/ring.length, x/ring.length];
+}
+
+/* Burials recorded through the app, read back out of the record so they
+   behave exactly like the ones that came from ArcGIS: a dot on the map, a
+   name in the search, a line in the count. Without this a burial entered
+   next year would sit invisible, and the family looking for it would be
+   told nobody by that name is here. */
+function appBurials(){
+  const out = [];
+  D.plots.features.forEach(function(f){
+    const e = rec[f.properties.id];
+    if(e && e.name && e.status === 'occupied'){
+      out.push({id:'plot' + f.properties.id, plotId:f.properties.id, plot:plotName(f.properties), name:e.name,
+                birth:e.birth, death:e.death, vet:e.vet, conflict:e.conflict,
+                note:e.note, by:e.by, buried:e.buried, stoneIn:e.stoneIn, stoneDate:e.stoneDate,
+                kin:e.kin, kinEmail:e.kinEmail, kinPhone:e.kinPhone, ll:plotCenter(f)});
+    }
+  });
+  return out;
+}
+/* A plot's real name is section letter + number - "M20" - the way the
+   committee writes it on a record of purchase.
+   ⚠ THE LETTERS ARE NOT YET TRUSTWORTHY. They are derived by giving each plot
+   the letter of the nearest of the 21 BLOCK label points, which is wrong
+   wherever a section is long or oddly shaped: 108 labels come out on more than
+   one plot. Until the real section boundaries are known, a label is only shown
+   where it is unique in the whole cemetery. Everywhere else the plot falls
+   back to its bare number and says so, because a confident wrong plot number
+   on a record of purchase is far worse than an honest incomplete one. */
+let dupLabels = new Set();
+function findDuplicateLabels(){
+  const seen = {};
+  D.plots.features.forEach(function(f){
+    const l = f.properties.label;
+    if(l) seen[l] = (seen[l] || 0) + 1;
+  });
+  dupLabels = new Set(Object.keys(seen).filter(function(l){ return seen[l] > 1; }));
+}
+/* A plot shows its lot number, plain, exactly as the survey drew it. The
+   section letter is NOT worked out from the map - that was tried and it was
+   wrong on 263 plots. Where the full number matters, on a record of purchase,
+   the committee types it, and what they type is what the record keeps. */
+function setSection(p){ return p && rec[p.id] && rec[p.id].section; }
+function labelSure(p){ return !!plotName(p); }
+function plotName(p){
+  if(!p) return '';
+  const typed = rec[p.id] && rec[p.id].plotNo;
+  if(typed) return typed;
+  const hand = setSection(p);
+  if(hand) return hand + (p.plot || '');
+  return p.plot || '';
+}
+function plotNameById(id){ return plotName(plotById(id)); }
+/* M20 before M21 before M100 - section letter first, then the number as a
+   number. Plain text sorting puts M100 before M20 and shuffles a sale's
+   plots on the record of purchase. */
+function sortPlotNames(names){
+  return names.slice().sort(function(a, b){
+    const A = /^([A-Za-z]*)(\d*)/.exec(a || ''), B = /^([A-Za-z]*)(\d*)/.exec(b || '');
+    // a plot with no confirmed letter sorts last, not first, so a half-lettered
+    // sale reads "F20, 21" rather than "21, F20"
+    return (A[1] || 'zz').localeCompare(B[1] || 'zz') || (parseInt(A[2] || 0, 10) - parseInt(B[2] || 0, 10));
+  });
+}
+function saleplotNames(ids){
+  return sortPlotNames(ids.map(plotNameById).filter(Boolean));
+}
+/* Worked out, not stored, so that ticking the corner markers moves a plot
+   from reserved to sold on its own and can never fall out of step. */
+function statusOf(p){
+  const e = rec[p.id];
+  if(e){
+    if(e.name)  return 'occupied';
+    if(e.buyer) return e.postsIn ? 'sold' : 'reserved';
+    if(e.status) return e.status;
+  }
+  return p.status;
+}
+function deviceOnly(id){ return !!localRec[id] && !cloudRec[id]; }
+function deviceOnlyIds(){ return Object.keys(localRec).filter(id => !cloudRec[id]); }
+
+function mergeRecords(){
+  rec = Object.assign({}, localRec, cloudRec);   // the cloud wins where both know a plot
+}
+function saveLocal(){
+  try{ localStorage.setItem('millfield_local', JSON.stringify(localRec)); }
+  catch(e){ toast('Could not save on this device'); }
+}
+function cacheCloud(){
+  try{ localStorage.setItem('millfield_cloud', JSON.stringify(cloudRec)); }catch(e){}
+}
+function loadStored(){
+  try{ localRec = JSON.parse(localStorage.getItem('millfield_local') || '{}'); }catch(e){ localRec = {}; }
+  try{ cloudRec = JSON.parse(localStorage.getItem('millfield_cloud') || '{}'); }catch(e){ cloudRec = {}; }
+  mergeRecords();
+}
+
+/* =====================================================================
+   THE CLOUD
+   Its own Firebase project - millfield-cemetery - belonging to the church
+   and nothing else. Free tier, no card attached, no other app sharing it.
+   One collection, cemeteryPlots/{plot id}: anyone may read it, which is
+   what keeps the public map current, and only a signed-in committee member
+   may write it. That is enforced by the server (see firestore.rules), not
+   by this page.
+   ===================================================================== */
+const FB = {
+  apiKey: "AIzaSyCikaKrU_KprvXgfjLI7lMExSFF8RVR0CY",
+  authDomain: "millfield-cemetery.firebaseapp.com",
+  projectId: "millfield-cemetery",
+  storageBucket: "millfield-cemetery.firebasestorage.app",
+  messagingSenderId: "655883554718",
+  appId: "1:655883554718:web:e356c3a794a9a9066d508f"
+};
+const COLL = 'cemeteryPlots';        // public: what a visitor may see
+const PRIV = 'cemeteryPrivate';      // committee only: living people's details
+const MEMB = 'cemeteryCommittee';    // who is allowed to write, one document per email
+let db = null, auth = null;
+let members = [], unsubMembers = null, unsubPrivate = null;
+let pubRec = {}, privRec = {};
+
+/* ---------------------------------------------------------------------
+   WHAT IS PUBLIC AND WHAT IS NOT
+
+   Public - everything about the GROUND and the people buried in it:
+     the name on the stone, dates of birth and death, veteran service, which
+     plot it is, whose family lot it belongs to, whether it is spoken for,
+     and whether the corner markers and headstone are in place. All of it is
+     either carved on a stone or plain to see standing in the cemetery, and
+     the owner names are already drawn on the family-lot layer.
+
+   Committee only - everything about LIVING people, money and the transaction:
+     addresses, email, telephone, what was paid and when, private arrangements
+     about who may be buried, and which committee member recorded what. The
+     date of purchase is the committee's business, not the public's.
+
+   The server enforces this. It is not the app choosing to hide fields - the
+   private collection is refused outright to anyone not on the roll.
+   --------------------------------------------------------------------- */
+const PRIVATE_FIELDS = [
+  /* The purchaser's NAME stays public - it helps with referencing, families
+     like to be buried near their own, and a monument carrying that name is
+     usually going up before long. Everything else about them does not. */
+  'street','city','state','zip','email','phone',     // how to reach a living person
+  'kin','kinEmail','kinPhone',                       // the family to call
+  'price','saleNote','date','letterDate',            // what was paid, when, and why
+  'people',                                          // a private arrangement about who may be buried
+  'by','at','sectionBy','sectionAt',                 // which committee member recorded it
+  'postsBy','stoneBy'
+];
+function splitRecord(patch){
+  const pub = {}, priv = {};
+  Object.keys(patch).forEach(function(k){
+    (PRIVATE_FIELDS.indexOf(k) >= 0 ? priv : pub)[k] = patch[k];
+  });
+  return {pub: pub, priv: priv};
+}
+function rebuildCloud(){
+  cloudRec = {};
+  Object.keys(pubRec).forEach(function(id){ cloudRec[id] = Object.assign({}, pubRec[id]); });
+  Object.keys(privRec).forEach(function(id){
+    cloudRec[id] = Object.assign({}, cloudRec[id] || {}, privRec[id]);
+  });
+  cacheCloud();
+  mergeRecords();
+  if(layerPlots){ applyStyles(); refreshCounts(); }
+}
+
+function cloudInit(){
+  if(typeof firebase === 'undefined'){ cloud.err = 'offline'; return; }
+  try{
+    const app = firebase.apps.length ? firebase.app() : firebase.initializeApp(FB);
+    db = firebase.firestore(app);
+    auth = firebase.auth(app);
+    /* Firestore's own offline store: at the cemetery with no bars the map
+       still reads, and anything the committee records is queued and sent
+       the moment a signal comes back. */
+    db.enablePersistence({synchronizeTabs:true}).catch(function(){});
+    cloud.ready = true;
+
+    db.collection(COLL).onSnapshot(function(snap){
+      pubRec = {};
+      snap.forEach(function(doc){ pubRec[doc.id] = doc.data(); });
+      cloud.live = true;
+      rebuildCloud();
+      if(cloud.user) tidyPrivate();
+    }, function(err){
+      cloud.live = false; cloud.err = err.code || 'unreachable';
+      if(layerPlots) refreshCounts();
+    });
+
+    auth.onAuthStateChanged(function(u){
+      cloud.user = u;
+      if(unsubMembers){ unsubMembers(); unsubMembers = null; members = []; }
+      if(unsubPrivate){ unsubPrivate(); unsubPrivate = null; privRec = {}; rebuildCloud(); }
+      if(u){
+        adminOn();
+        /* the details half - only a signed-in member can read this at all */
+        unsubPrivate = db.collection(PRIV).onSnapshot(function(snap){
+          privRec = {};
+          snap.forEach(function(doc){ privRec[doc.id] = doc.data(); });
+          rebuildCloud();
+          tidyPrivate();
+        }, function(){ privRec = {}; rebuildCloud(); });
+        /* the committee roll. Only a member may change it, and a member
+           may add the next one - so the committee can hand itself on
+           without anybody touching the database or calling for help. */
+        unsubMembers = db.collection(MEMB).onSnapshot(function(snap){
+          members = [];
+          snap.forEach(function(d){ members.push(Object.assign({email:d.id}, d.data())); });
+          members.sort(function(a,b){ return a.email.localeCompare(b.email); });
+        }, function(){ members = []; });
+      }else{
+        adminOff(true);
+      }
+    });
+  }catch(e){ cloud.err = e.message; }
+}
+
+function addMember(){
+  const em = ($('#mEmail').value||'').trim().toLowerCase();
+  if(!em || em.indexOf('@') < 1){ toast('A full email address, please'); return; }
+  db.collection(MEMB).doc(em).set({
+    addedBy: (cloud.user && cloud.user.email) || '', addedAt: new Date().toISOString()
+  }).then(function(){
+    toast(em + ' can now record burials and sales', 3600);
+    adminPanel();
+  }).catch(function(e){ toast('Could not add: ' + (e.code||e.message), 4000); });
+}
+
+function removeMember(em){
+  if(cloud.user && cloud.user.email === em){ toast('You cannot remove yourself'); return; }
+  db.collection(MEMB).doc(em).delete()
+    .then(function(){ toast(em + ' removed'); adminPanel(); })
+    .catch(function(e){ toast('Could not remove: ' + (e.code||e.message), 4000); });
+}
+
+function cloudWrite(id, patch){
+  const body = Object.assign({}, rec[id], patch, {plotId:String(id)});
+  /* The status is normally worked out from the purchaser and the markers, but
+     both of those are committee-only now. So it is written into the public
+     half as a plain word - reserved or sold - which is all a visitor needs. */
+  if(body.name) body.status = 'occupied';
+  else if(body.buyer) body.status = body.postsIn ? 'sold' : 'reserved';
+  if(cloud.ready && cloud.user){
+    const half = splitRecord(body);
+    /* deliberately not awaited - offline, Firestore holds the write and
+       the mirror below keeps the map honest until it lands */
+    db.collection(COLL).doc(String(id)).set(half.pub, {merge:true})
+      .catch(function(e){ toast('Cloud refused the change: ' + (e.code||e.message), 4000); });
+    if(Object.keys(half.priv).length){
+      half.priv.plotId = String(id);
+      db.collection(PRIV).doc(String(id)).set(half.priv, {merge:true})
+        .catch(function(e){ toast('Could not save the details: ' + (e.code||e.message), 4000); });
+      privRec[id] = Object.assign({}, privRec[id], half.priv);
+    }
+    pubRec[id] = Object.assign({}, pubRec[id], half.pub);
+    rebuildCloud();
+    return;
+  }
+  localRec[id] = body; saveLocal();
+  mergeRecords(); applyStyles(); refreshCounts();
+}
+
+/* Anything private that was written into the public half before the two were
+   separated gets moved across and deleted from public, the first time a
+   committee member opens the app. Runs quietly; does nothing once clean. */
+let tidying = false;
+function tidyPrivate(){
+  if(tidying || !cloud.user || !db) return;
+  const jobs = [];
+  Object.keys(pubRec).forEach(function(id){
+    const exposed = {};
+    PRIVATE_FIELDS.forEach(function(f){
+      if(pubRec[id][f] !== undefined && pubRec[id][f] !== '') exposed[f] = pubRec[id][f];
+    });
+    if(Object.keys(exposed).length) jobs.push({id:id, fields:exposed});
+  });
+  if(!jobs.length) return;
+  tidying = true;
+  const del = {};
+  jobs.forEach(function(j){
+    Object.keys(j.fields).forEach(function(f){ del[f] = firebase.firestore.FieldValue.delete(); });
+  });
+  Promise.all(jobs.map(function(j){
+    const priv = Object.assign({plotId:j.id}, j.fields);
+    return db.collection(PRIV).doc(j.id).set(priv, {merge:true})
+      .then(function(){ return db.collection(COLL).doc(j.id).update(del); });
+  })).then(function(){
+    toast('Moved the purchasers’ details out of public view', 4000);
+  }).catch(function(e){
+    toast('Could not tidy the old records: ' + (e.code||e.message), 5000);
+  }).then(function(){ tidying = false; });
+}
+
+function cloudClear(id){
+  if(cloud.ready && cloud.user && cloudRec[id]){
+    db.collection(COLL).doc(String(id)).delete()
+      .catch(function(e){ toast('Could not remove: ' + (e.code||e.message)); });
+    db.collection(PRIV).doc(String(id)).delete().catch(function(){});
+    delete pubRec[id]; delete privRec[id]; delete cloudRec[id]; cacheCloud();
+  }
+  delete localRec[id]; saveLocal();
+  mergeRecords(); applyStyles(); refreshCounts();
+}
+
+function pushDeviceOnly(){
+  const ids = deviceOnlyIds();
+  if(!ids.length){ toast('Nothing waiting'); return; }
+  if(!(cloud.ready && cloud.user)){ toast('Sign in first'); return; }
+  ids.forEach(function(id){
+    const body = Object.assign({}, localRec[id], {plotId:String(id)});
+    db.collection(COLL).doc(String(id)).set(body, {merge:true})
+      .catch(function(e){ toast('Cloud refused: ' + (e.code||e.message), 4000); });
+    cloudRec[id] = body;
+  });
+  localRec = {}; saveLocal(); cacheCloud(); mergeRecords();
+  applyStyles(); refreshCounts(); closePanel();
+  toast(ids.length + ' change' + (ids.length===1?'':'s') + ' sent to the cloud');
+}
+
+function cloudLabel(){
+  if(!cloud.ready) return 'device only';
+  if(!cloud.live)  return 'cloud offline';
+  return 'cloud';
+}
+
+/* ---------- load ---------- */
+async function load(){
+  const names = ['plots','burials','lots','blocks','posts','boundary'];
+  const res = await Promise.all(names.map(n => fetch('data/' + n + '.geojson').then(r => r.json())));
+  names.forEach(function(n,i){ D[n] = res[i]; });
+  findDuplicateLabels();
+  loadStored();
+  cloudInit();
+  init();
+  $('#loading').style.display = 'none';
+}
+
+function init(){
+  map = L.map('map', {zoomControl:false, attributionControl:false});
+  baseAerial = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:22, maxNativeZoom:19});
+  baseVGIN   = L.tileLayer('https://vginmaps.vdem.virginia.gov/arcgis/rest/services/VBMP_Imagery/MostRecentImagery_WGS/MapServer/tile/{z}/{y}/{x}',{maxZoom:22, maxNativeZoom:19});
+  basePlain  = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19});
+  baseAerial.addTo(map);
+  L.control.zoom({position:'bottomright'}).addTo(map);
+
+  L.geoJSON(D.boundary, {style:{color:'#F4ECD9', weight:2, fill:false, dashArray:'6 5'}}).addTo(map);
+
+  layerLots = L.geoJSON(D.lots, {
+    style:{color:'#F0E2BC', weight:2, fillOpacity:0.06, fillColor:'#F0E2BC'},
+    onEachFeature:function(f,l){ l.on('click', function(e){ L.DomEvent.stop(e); showLot(f.properties); }); }
+  }).addTo(map);
+
+  layerPlots = L.geoJSON(D.plots, {
+    style: function(f){ return plotStyle(f.properties); },
+    onEachFeature:function(f,l){
+      l.on('click', function(e){
+        L.DomEvent.stop(e);
+        if(selMode) togglePlot(f.properties.id); else showPlot(f.properties.id);
+      });
+    }
+  }).addTo(map);
+
+  layerBurials = L.geoJSON(D.burials, {
+    pointToLayer:function(f,ll){ return L.circleMarker(ll,{radius:6, weight:2, color:'#F4ECD9',
+      fillColor: f.properties.vet ? '#8C2F26' : '#211B11', fillOpacity:1}); },
+    onEachFeature:function(f,l){ l.on('click', function(e){ L.DomEvent.stop(e); showBurial(f.properties); }); }
+  }).addTo(map);
+
+  layerSaleLots  = L.layerGroup().addTo(map);
+  layerAppBurials = L.layerGroup().addTo(map);
+  rebuildSaleLots();
+  rebuildAppBurials();
+
+  /* The map shows the survey's own lot number and nothing else - no letters,
+     guessed or typed. The full plot number lives on the record, where the
+     committee put it. */
+  layerNumbers = L.layerGroup(
+    D.plots.features.filter(f => f.properties.plot).map(function(f){
+      return L.marker(plotCenter(f), {interactive:false, icon:L.divIcon({className:'',
+        html:'<div class="plotnum">' + esc(f.properties.plot) + '</div>',
+        iconSize:[26,14], iconAnchor:[13,7]})});
+    }));
+
+  layerBlocks = L.geoJSON(D.blocks, {
+    pointToLayer:function(f,ll){ return L.marker(ll,{interactive:false, icon:L.divIcon({className:'',
+      html:'<div class="sectionletter">' + esc(f.properties.letter) + '</div>', iconSize:[22,22], iconAnchor:[11,11]})}); }
+  }).addTo(map);
+
+  layerPosts = L.geoJSON(D.posts, {
+    pointToLayer:function(f,ll){ return L.marker(ll,{icon:L.divIcon({className:'', html:'<div class="post"></div>',
+      iconSize:[16,16], iconAnchor:[8,8]})}); },
+    onEachFeature:function(f,l){ l.on('click', function(e){ L.DomEvent.stop(e); showPost(f.properties); }); }
+  });
+
+  map.fitBounds(layerPlots.getBounds().pad(0.12));
+
+  const labels = function(){
+    const want = map.getZoom() >= 20 && $('#layers input[data-l="numbers"]').checked;
+    if(want && !map.hasLayer(layerNumbers)) layerNumbers.addTo(map);
+    if(!want && map.hasLayer(layerNumbers)) map.removeLayer(layerNumbers);
+  };
+  map.on('zoomend', labels);
+  window._labels = labels;
+  labels();
+
+  refreshCounts();
+  wire();
+}
+
+function plotStyle(p){
+  const st = statusOf(p);
+  if(saleSel.has(p.id)) return {color:'#1F6FEB', weight:4, opacity:1, fillColor:'#1F6FEB', fillOpacity:.5};
+  const own = deviceOnly(p.id);
+  return {color: own ? '#7A4418' : '#20180F', weight: own ? 2.5 : 1,
+          opacity: own ? 1 : .55, fillColor: COLOR[st], fillOpacity:.62};
+}
+
+function refreshCounts(){
+  const c = {occupied:0, sold:0, reserved:0, available:0};
+  D.plots.features.forEach(function(f){ c[statusOf(f.properties)]++; });
+  const waiting = deviceOnlyIds().length;
+  // graves from the survey, plus every burial recorded through the app since
+  const graves = D.burials.features.length + appList.length;
+  const vets   = D.burials.features.filter(f => f.properties.vet).length
+               + appList.filter(b => b.vet).length;
+  $('#counts').textContent =
+    graves + ' burials · ' + c.available + ' plots available · ' + cloudLabel()
+    + (waiting ? ' · ' + waiting + ' waiting to send' : '');
+  $('#cAll').textContent    = D.plots.features.length;
+  $('#cAvail').textContent  = c.available;
+  $('#cGraves').textContent = graves;
+  $('#cVets').textContent   = vets;
+}
+
+/* ---------- detail sheets ---------- */
+function openPanel(html){
+  $('#panelcontent').innerHTML = html;
+  /* Chrome cheerfully autofills a name-and-address form with the last one it
+     saw, which on a purchase record means quietly writing the wrong family
+     onto the wrong ground. Every box here is filled from the cemetery record
+     or typed fresh - never from the browser's memory. */
+  $('#panelcontent').querySelectorAll('input,textarea').forEach(function(el){
+    if(el.type === 'password') return;       // the sign-in box may autofill
+    el.setAttribute('autocomplete', 'off');
+    el.setAttribute('autocorrect', 'off');
+    el.setAttribute('autocapitalize', 'off');
+    el.setAttribute('spellcheck', 'false');
+    if(!el.name) el.name = 'mc-' + el.id + '-' + Math.random().toString(36).slice(2, 8);
+  });
+  $('#panel').classList.add('on');
+  $('#panelbody').scrollTop = 0;
+}
+function closePanel(){ $('#panel').classList.remove('on'); }
+
+function showBurial(p){
+  const rows = [['Born', fmtDate(p.birth)], ['Died', fmtDate(p.death)], ['Age', p.age],
+                ['Veteran', p.vet ? (p.conflict ? 'Yes — ' + p.conflict : 'Yes') : null]].filter(r => r[1]);
+  openPanel(
+    '<h2>' + esc(p.name || 'Unnamed') + '</h2>' +
+    '<div style="color:var(--ink3);font-size:16px">' + esc(years(p.birth,p.death)) + '</div>' +
+    (p.vet ? '<span class="tag" style="background:#E7D3D0;color:#7A2A22">Veteran</span>' : '') +
+    '<div style="margin-top:14px">' +
+      rows.map(r => '<div class="kv"><span class="k">' + r[0] + '</span><span class="v">' + esc(r[1]) + '</span></div>').join('') +
+      (p.note ? '<div class="kv"><span class="k">Note</span><span class="v">' + esc(p.note) + '</span></div>' : '') +
+      (p.plot ? '<div class="kv"><span class="k">Plot</span><span class="v">' + esc(p.plot) + '</span></div>' : '') +
+      (p.buried ? '<div class="kv"><span class="k">Buried</span><span class="v">' + esc(fmtDate(p.buried)) + '</span></div>' : '') +
+      stoneLine(p) +
+      (p.kin  ? '<div class="kv"><span class="k">Family contact</span><span class="v">' + esc(p.kin) + '</span></div>' : '') +
+      (p.by   ? '<div class="kv"><span class="k">Recorded by</span><span class="v">' + esc(p.by) + '</span></div>' : '') +
+    '</div>' +
+    (p.link ? '<a class="btn" href="' + esc(p.link) + '" target="_blank" rel="noopener">&#128214; Find a Grave memorial</a>' : '') +
+    /* A burial recorded through the app can be corrected from here as well as
+       from the plot. The dot sits on the middle of its plot, so tapping the
+       grave is the easy miss - it should not be a dead end. */
+    (isAdmin && p.plotId
+      ? '<div class="sec-h">Committee</div>' +
+        (stoneState(p) && stoneState(p).state !== 'done'
+          ? '<button class="btn adm" onclick="markStone(' + p.plotId + ')">&#9989; Record the headstone as set</button>' +
+            (p.kinEmail || p.kinPhone
+              ? '<button class="btn sec" onclick="remindFamily(' + p.plotId + ')">&#9993; Remind the family</button>'
+              : '')
+          : '') +
+        '<button class="btn adm" onclick="formBurial(' + p.plotId + ')">&#9998; Correct this record</button>' +
+        '<button class="btn sec" onclick="undoRecord(' + p.plotId + ')">&#8634; Delete this record</button>' +
+        '<button class="btn sec" onclick="showPlot(' + p.plotId + ')">Go to the plot</button>'
+      : '') +
+    '<button class="btn sec" onclick="closePanel()">Close</button>');
+}
+
+function showPlot(id){
+  const p = plotById(id);
+  if(!p) return;
+  const e = rec[id];
+  const st = statusOf(p);
+  const owner = (e && (e.buyer || e.owner)) || p.owner;
+  openPanel(
+    '<h2>' + (plotName(p) ? 'Plot ' + esc(plotName(p)) : 'Plot') + '</h2>' +
+    (rec[id] && rec[id].plotNo
+      ? '<div style="color:var(--ink3);font-size:15px">Plot number set by the committee</div>' : '') +
+    '<span class="tag ' + st + '">' + LABEL[st] + '</span>' +
+    (deviceOnly(id) ? ' <span class="tag device">On this device only</span>' : '') +
+    '<div style="margin-top:14px">' +
+      (owner      ? '<div class="kv"><span class="k">Lot owner</span><span class="v">' + esc(owner) + '</span></div>' : '') +
+      (p.lotsize  ? '<div class="kv"><span class="k">Lot size</span><span class="v">' + esc(p.lotsize) + '</span></div>' : '') +
+      (e && e.name ? '<div class="kv"><span class="k">Burial recorded</span><span class="v">' + esc(e.name) + '</span></div>' : '') +
+      (e && e.date ? '<div class="kv"><span class="k">Date of sale</span><span class="v">' + esc(fmtDate(e.date)) + '</span></div>' : '') +
+      (e && e.saleCount > 1
+        ? '<div class="kv"><span class="k">Sold as</span><span class="v">' + esc(saleSizeName(e.saleCount)) +
+          ' (' + e.saleCount + ' plots)</span></div>' : '') +
+      (e && e.price ? '<div class="kv"><span class="k">Paid</span><span class="v">$' + esc(e.price) + '</span></div>' : '') +
+      (e && e.people ? '<div class="kv"><span class="k">May be buried here</span><span class="v">' +
+        esc(e.people).replace(/\n/g, '<br>') + '</span></div>' : '') +
+      postLine(e) +
+      stoneLine(e) +
+      (e && e.by   ? '<div class="kv"><span class="k">Recorded by</span><span class="v">' + esc(e.by) + '</span></div>' : '') +
+    '</div>' +
+    '<p class="note">' +
+      (st === 'available'
+        ? 'Not part of any family lot. Plots are available to church members — speak to the Cemetery Committee.'
+        : st === 'reserved'
+          ? 'Bought and paid for, but the corner markers are not yet recorded as set. Until they are, the plot ' +
+            'is reserved rather than permanently in the purchaser&rsquo;s name.'
+          : st === 'sold'
+            ? 'Bought, and the corner markers are set &mdash; the plot is permanently in the owner&rsquo;s name.'
+            : 'A burial is recorded in this plot.') +
+    '</p>' +
+    (isAdmin
+      ? '<div class="sec-h">Committee</div>' +
+        '<button class="btn adm" onclick="formBurial(' + id + ')">&#9906; Record a burial here</button>' +
+        '<button class="btn adm" onclick="startPicking(' + id + ')">&#128215; ' +
+          (e && e.buyer ? 'Change this sale' : 'Record a sale — pick the plots') + '</button>' +
+        (e && e.buyer
+          ? '<button class="btn" onclick="printLetter(\'' + esc(e.saleId || ('plot-' + id)) +
+            '\')">&#128196; Print the record of purchase</button>' +
+            (e.postsIn ? '' :
+              '<button class="btn sec" onclick="markPosts(\'' + esc(e.saleId || ('plot-' + id)) +
+              '\')">&#9989; Record the corner markers as set</button>') +
+            (e.email || e.phone
+              ? '<button class="btn sec" onclick="remindPurchaser(\'' + esc(e.saleId || ('plot-' + id)) +
+                '\')">&#9993; Send the purchaser a reminder</button>' : '')
+          : '') +
+        (e ? '<button class="btn sec" onclick="undoRecord(' + id + ')">&#8634; Undo this plot</button>' : '') +
+        (e && e.saleId && e.saleCount > 1
+          ? '<button class="btn sec" onclick="undoSale(\'' + esc(e.saleId) + '\')">&#8634; Undo the whole ' +
+            e.saleCount + '-plot sale</button>' : '')
+      : '') +
+    '<button class="btn sec" onclick="closePanel()">Close</button>');
+}
+
+/* One line for either deadline, in the committee's own terms. */
+function clockLine(label, st, noDateSays){
+  if(!st) return '';
+  const cell = function(v, colour){
+    return '<div class="kv"><span class="k">' + label + '</span><span class="v"' +
+      (colour ? ' style="color:' + colour + '"' : '') + '>' + v + '</span></div>';
+  };
+  if(st.state === 'done')
+    return cell('Set' + (st.on ? ' &mdash; ' + esc(fmtDate(st.on)) : ''), '#2F6B37');
+  if(st.state === 'unknown')
+    return cell('Not confirmed &mdash; ' + noDateSays, '#8C2F26');
+  if(st.state === 'overdue')
+    return cell(st.days + ' days overdue &mdash; were due ' + esc(fmtDate(st.due)), '#8C2F26');
+  return cell('Due ' + esc(fmtDate(st.due)) + ' &mdash; ' + st.days + ' days left');
+}
+function postLine(e){
+  return clockLine('Corner markers', postState(e), 'no date of purchase on file');
+}
+function stoneLine(e){
+  return clockLine('Headstone', stoneState(e), 'no date of burial on file');
+}
+
+function showLot(p){
+  openPanel(
+    '<h2>' + esc(p.owner || 'Family lot') + '</h2>' +
+    '<span class="tag reserved">Family lot</span>' +
+    '<div style="margin-top:14px">' +
+      (p.size  ? '<div class="kv"><span class="k">Size</span><span class="v">' + esc(p.size) + '</span></div>' : '') +
+      (p.plots ? '<div class="kv"><span class="k">Plots</span><span class="v">' + esc(p.plots) + '</span></div>' : '') +
+      (p.notes ? '<div class="kv"><span class="k">Notes</span><span class="v">' + esc(p.notes) + '</span></div>' : '') +
+    '</div>' +
+    '<button class="btn sec" onclick="closePanel()">Close</button>');
+}
+
+function showPost(p){
+  openPanel(
+    '<h2>Survey corner post</h2>' +
+    '<span class="tag" style="background:#CFEFF5;color:#08454F">Monument</span>' +
+    '<div style="margin-top:14px">' +
+      (p.label ? '<div class="kv"><span class="k">Label</span><span class="v">' + esc(p.label) + '</span></div>' : '') +
+      (p.owner ? '<div class="kv"><span class="k">Lot</span><span class="v">' + esc(p.owner) + '</span></div>' : '') +
+    '</div>' +
+    '<p class="note">The physical monuments the cemetery layout was measured from.</p>' +
+    '<button class="btn sec" onclick="closePanel()">Close</button>');
+}
+
+/* ---------- committee: recording ---------- */
+function who(){ return (cloud.user && (cloud.user.email || '')) || localStorage.getItem('millfield_who') || ''; }
+
+function formBurial(id){
+  const p = plotById(id), e = rec[id] || {};
+  openPanel(
+    '<h2>Record a burial</h2>' +
+    '<div style="color:var(--ink3);font-size:16px">' + (plotName(p) ? 'Plot ' + esc(plotName(p)) : 'Plot') +
+      (p.owner ? ' · ' + esc(p.owner) : '') + '</div>' +
+    '<div class="sec-h">Who is buried here</div>' +
+    '<label class="f"><span>Full name</span><input type="text" id="eName" value="' + esc(e.name||'') + '" placeholder="As it appears on the stone"></label>' +
+    dateFields('eBirth', 'Born', e.birth) +
+    dateFields('eDeath', 'Died', e.death) +
+    '<label class="f"><span>Age at death</span><input type="text" id="eAge" value="' + esc(e.age||'') + '" ' +
+      'placeholder="worked out from the dates if you leave it"></label>' +
+    '<small class="hint" style="margin:-6px 0 12px">Plenty of old stones give an age and no date of birth. ' +
+      'Whatever is on the stone goes here.</small>' +
+    '<label class="f"><span>Veteran</span><select id="eVet"><option value="">No</option>' +
+      '<option value="YES"' + (e.vet==='YES'?' selected':'') + '>Yes</option></select></label>' +
+    '<label class="f"><span>Conflict, if any</span><input type="text" id="eConflict" value="' + esc(e.conflict||'') + '"></label>' +
+    '<label class="f"><span>Notes</span><textarea id="eNote" placeholder="Find a Grave link, or anything worth recording">' + esc(e.note||'') + '</textarea></label>' +
+    '<div class="sec-h">Headstone &mdash; ' + STONE_DAYS + ' days</div>' +
+    '<p class="note" style="margin-top:0">Within ' + STONE_DAYS + ' days of the burial the family must mark the ' +
+      'grave with a permanent marker giving the full name, date of birth and date of death.</p>' +
+    '<label class="f"><span>Date of burial</span><input type="date" id="eBuried" value="' + esc(e.buried||'') + '"></label>' +
+    '<small class="hint" style="margin:-6px 0 12px">The ' + STONE_DAYS + ' days run from this, not from the date of death.</small>' +
+    '<label class="checkrow"><input type="checkbox" id="eStoneIn"' + (e.stoneIn ? ' checked' : '') +
+      '> <span>Tick if the headstone is already set</span></label>' +
+    '<label class="f"><span>Date it was set</span><input type="date" id="eStoneDate" value="' + esc(e.stoneDate||'') + '"></label>' +
+    '<div class="sec-h">Family to contact</div>' +
+    '<p class="note" style="margin-top:0">Who the committee speaks to about the headstone &mdash; often not the ' +
+      'person who bought the plots.</p>' +
+    '<label class="f"><span>Name</span><input type="text" id="eKin" value="' + esc(e.kin||'') + '"></label>' +
+    '<label class="f"><span>Email</span><input type="email" id="eKinEmail" value="' + esc(e.kinEmail||'') + '"></label>' +
+    '<label class="f"><span>Mobile number</span><input type="tel" id="eKinPhone" value="' + esc(e.kinPhone||'') + '"></label>' +
+    '<label class="f"><span>Recorded by</span><input type="text" id="eBy" value="' + esc(e.by || who()) + '"></label>' +
+    '<button class="btn adm" onclick="saveBurial(' + id + ')">&#128190; Save — marks the plot occupied</button>' +
+    '<button class="btn sec" onclick="showPlot(' + id + ')">Cancel</button>');
+}
+
+function saveBurial(id){
+  const name = $('#eName').value.trim();
+  if(!name){ toast('A name is needed'); return; }
+  const by = $('#eBy').value.trim();
+  if(by) localStorage.setItem('millfield_who', by);
+  /* If they did not type an age but both dates are known, work it out - but
+     never overwrite an age somebody read off the stone. */
+  let age = $('#eAge').value.trim();
+  const b = readDate('eBirth'), d = readDate('eDeath');
+  if(!age && b.length >= 4 && d.length >= 4){
+    const y = +d.slice(0,4) - +b.slice(0,4);
+    if(y >= 0 && y < 130) age = String(y);
+  }
+  cloudWrite(id, {status:'occupied', name:name, age:age, birth:b, death:d,
+    vet:$('#eVet').value, conflict:$('#eConflict').value.trim(), note:$('#eNote').value.trim(),
+    buried:$('#eBuried').value, stoneIn:$('#eStoneIn').checked, stoneDate:$('#eStoneDate').value,
+    kin:$('#eKin').value.trim(), kinEmail:$('#eKinEmail').value.trim(), kinPhone:$('#eKinPhone').value.trim(),
+    by:by, at:new Date().toISOString()});
+  closePanel();
+  toast(cloud.user ? 'Recorded — saved to the cloud' : 'Recorded on this device — sign in to share it');
+}
+
+/* ---- picking the plots a sale covers ---- */
+function togglePlot(id){
+  if(saleSel.has(id)) saleSel.delete(id); else saleSel.add(id);
+  applyStyles();
+  updateSelBar();
+}
+function startPicking(id){
+  if(id != null) saleSel.add(+id);
+  selMode = true;
+  closePanel();
+  $('#selbar').classList.add('on');
+  applyStyles();
+  updateSelBar();
+  toast('Tap each plot in this sale. Tap again to drop one.', 3600);
+}
+function updateSelBar(){
+  const n = saleSel.size;
+  const nums = saleplotNames([...saleSel]);
+  $('#selcount').textContent = n + (n === 1 ? ' plot' : ' plots')
+    + (n ? ' — ' + nums.slice(0,8).join(', ') + (n > 8 ? '…' : '') : '');
+  $('#seldone').disabled = n === 0;
+}
+function cancelPicking(){
+  selMode = false; saleSel.clear();
+  $('#selbar').classList.remove('on');
+  applyStyles();
+}
+function donePicking(){
+  if(!saleSel.size) return;
+  selMode = false;
+  $('#selbar').classList.remove('on');
+  formSale();
+}
+
+function formSale(){
+  if(!saleSel.size){ toast('Pick at least one plot'); return; }
+  const ids = [...saleSel];
+  const e = rec[ids[0]] || {};
+  const n = ids.length;
+  const nums = saleplotNames(ids).join(', ');
+  const already = ids.filter(function(i){ return statusOf(plotById(i)) !== 'available'; });
+  openPanel(
+    '<h2>Record a sale</h2>' +
+    '<div style="color:var(--ink3);font-size:16px">' + n + (n === 1 ? ' plot' : ' plots') + ' — ' + esc(nums) + '</div>' +
+    (already.length
+      ? '<p class="note" style="color:#8C2F26"><b>Careful:</b> ' + already.length + ' of these ' +
+        (already.length === 1 ? 'is' : 'are') + ' already occupied or reserved. Check before you save.</p>'
+      : '') +
+    '<button class="btn sec" onclick="startPicking(null)">&#128205; Change which plots</button>' +
+    /* The survey knows the lot number; only the committee knows the section
+       letter. So the number is handed over as a plain box with the lot number
+       already in it, and whatever is typed here is what the record keeps and
+       what prints on the letter. */
+    '<div class="sec-h">Plot numbers</div>' +
+    '<p class="note" style="margin-top:0">Put the section letter in front of each number &mdash; ' +
+      '<b>F20</b> rather than <b>20</b>. What you type here is what goes on the letter.</p>' +
+    ids.map(function(i){
+      const pp = plotById(i);
+      return '<label class="f"><span>Lot ' + esc(pp.plot || '?') + '</span>' +
+        '<input type="text" id="pn' + i + '" value="' + esc(plotName(pp)) + '"></label>';
+    }).join('') +
+    '<div class="sec-h">Purchaser</div>' +
+    '<label class="f"><span>Purchaser</span><input type="text" id="sBuyer" value="' + esc(e.buyer||'') + '" placeholder="Name as it should read on the letter"></label>' +
+    '<label class="f"><span>Street address</span><input type="text" id="sStreet" value="' + esc(e.street||'') + '"></label>' +
+    '<div class="dparts">' +
+      '<input type="text" id="sCity" placeholder="town" value="' + esc(e.city||'') + '">' +
+      '<input type="text" id="sState" placeholder="VA" value="' + esc(e.state||'VA') + '">' +
+      '<input type="text" id="sZip" placeholder="zip" value="' + esc(e.zip||'') + '">' +
+    '</div><small class="hint" style="margin:5px 0 12px">Town, state, zip &mdash; for the record of purchase letter.</small>' +
+    '<label class="f"><span>Email</span><input type="email" id="sEmail" value="' + esc(e.email||'') + '" placeholder="for the marker reminder"></label>' +
+    '<label class="f"><span>Mobile number</span><input type="tel" id="sPhone" value="' + esc(e.phone||'') + '" placeholder="for a text reminder"></label>' +
+    '<label class="f"><span>Who may be buried in these plots</span>' +
+      '<textarea id="sPeople" placeholder="One name per line. Names the committee can check against should the purchaser die.">' +
+      esc(e.people||'') + '</textarea></label>' +
+    '<div class="sec-h">The purchase</div>' +
+    '<label class="f"><span>Amount paid</span><input type="number" id="sPrice" value="' +
+      esc(e.price || SALE_PRICE[n] || '') + '"></label>' +
+    '<small class="hint" style="margin:-6px 0 12px">' +
+      (SALE_PRICE[n] ? 'The ' + saleSizeName(n) + ' price is $' + SALE_PRICE[n] + '. Change it if the committee agreed otherwise.'
+                     : 'No standing price for ' + n + ' plots — put in what was agreed.') + '</small>' +
+    '<label class="f"><span>Date of purchase</span><input type="date" id="sDate" value="' +
+      esc(e.date || today()) + '"></label>' +
+    '<label class="f"><span>Date the letter was sent</span><input type="date" id="sLetterDate" value="' +
+      esc(e.letterDate || '') + '"></label>' +
+    '<small class="hint" style="margin:-6px 0 12px">The ' + POST_DAYS + ' days for the corner markers run from ' +
+      'the letter, since that is when the purchaser was told. Leave it empty and the date of purchase is used.</small>' +
+    '<label class="f"><span>Notes</span><textarea id="sNote" placeholder="Anything worth recording — who to contact, conditions agreed">' +
+      esc(e.saleNote||'') + '</textarea></label>' +
+    '<div class="sec-h">Corner markers &mdash; ' + POST_DAYS + ' days</div>' +
+    '<p class="note" style="margin-top:0">Four 6&Prime;&times;6&Prime; granite markers, one initial on top of each, set at the ' +
+      'purchaser&rsquo;s expense within ' + POST_DAYS + ' days. The plots pass permanently into their name once it is done.</p>' +
+    '<label class="checkrow"><input type="checkbox" id="sPostsIn"' + (e.postsIn ? ' checked' : '') +
+      '> <span>Tick if the markers are already set</span></label>' +
+    '<label class="f"><span>Date the purchaser reported it</span><input type="date" id="sPostsDate" value="' +
+      esc(e.postsDate||'') + '"></label>' +
+    '<label class="f"><span>Recorded by</span><input type="text" id="sBy" value="' + esc(e.by || who()) + '"></label>' +
+    '<button class="btn adm" onclick="saveSale()">&#128190; Save — marks ' + n +
+      (n === 1 ? ' plot reserved' : ' plots reserved') + '</button>' +
+    '<button class="btn sec" onclick="cancelPicking();closePanel()">Cancel</button>');
+}
+
+function saveSale(){
+  const buyer = $('#sBuyer').value.trim();
+  if(!buyer){ toast('A buyer is needed'); return; }
+  const by = $('#sBy').value.trim();
+  if(by) localStorage.setItem('millfield_who', by);
+  const ids = [...saleSel];
+  /* One sale, one id shared by every plot in it - so the record can always
+     say "these four were bought together" rather than four separate sales
+     that merely happen to share a name. */
+  const saleId = 'sale-' + Date.now().toString(36);
+  const common = {status:'reserved', buyer:buyer, saleId:saleId, saleCount:ids.length,
+    size:saleSizeName(ids.length), sizePlot:saleFootprint(ids),   // "double" and "10X10"
+    price:$('#sPrice').value, date:$('#sDate').value,
+    letterDate:$('#sLetterDate').value,
+    street:$('#sStreet').value.trim(), city:$('#sCity').value.trim(),
+    state:$('#sState').value.trim(), zip:$('#sZip').value.trim(),
+    email:$('#sEmail').value.trim(), phone:$('#sPhone').value.trim(),
+    people:$('#sPeople').value.trim(),
+    postsIn:$('#sPostsIn').checked, postsDate:$('#sPostsDate').value,
+    plots:saleplotNames(ids).join(', '),
+    saleNote:$('#sNote').value.trim(), by:by, at:new Date().toISOString()};
+  /* each plot keeps the number the committee typed for it */
+  ids.forEach(function(id){
+    const box = $('#pn' + id);
+    const typed = box ? box.value.trim() : '';
+    cloudWrite(id, Object.assign({}, common, typed ? {plotNo:typed} : {}));
+  });
+  // the sale's plot list is rebuilt from what was typed, not from the map
+  const listed = saleplotNames(ids).join(', ');
+  ids.forEach(function(id){ cloudWrite(id, {plots:listed}); });
+  saleSel.clear(); selMode = false;
+  $('#selbar').classList.remove('on');
+  applyStyles(); refreshCounts(); closePanel();
+  toast(ids.length + (ids.length === 1 ? ' plot' : ' plots') + ' recorded to ' + buyer);
+}
+
+function undoRecord(id){ cloudClear(id); closePanel(); toast('Change removed'); }
+
+function undoSale(saleId){
+  const ids = Object.keys(rec).filter(function(id){ return rec[id].saleId === saleId; });
+  ids.forEach(function(id){ cloudClear(id); });
+  closePanel();
+  toast(ids.length + ' plots released');
+}
+
+/* ---- the lot boundary around a purchase ----
+   The plots in a sale are drawn as one lot, the way the 56 surveyed lots are.
+   Every edge of every plot in the sale is collected; an edge shared by two of
+   them is interior and drops out, and what is left is the outline around the
+   whole block of ground - exact, because neighbouring plots were drawn on a
+   grid and share their corner coordinates. */
+function saleOutline(ids){
+  const seen = {}, order = [];
+  ids.forEach(function(id){
+    const f = D.plots.features.find(x => x.properties.id === +id);
+    if(!f) return;
+    const ring = f.geometry.coordinates[0];
+    for(let i = 0; i < ring.length - 1; i++){
+      const a = ring[i].map(n => n.toFixed(8)).join(),
+            b = ring[i+1].map(n => n.toFixed(8)).join();
+      const key = a < b ? a + '|' + b : b + '|' + a;
+      if(seen[key]) seen[key].n++;
+      else { seen[key] = {n:1, a:ring[i], b:ring[i+1]}; order.push(key); }
+    }
+  });
+  // an edge walked twice sits between two plots of the same sale - drop it
+  return order.filter(k => seen[k].n === 1)
+              .map(k => [[seen[k].a[1], seen[k].a[0]], [seen[k].b[1], seen[k].b[0]]]);
+}
+
+function rebuildSaleLots(){
+  if(!layerSaleLots) return;
+  layerSaleLots.clearLayers();
+  allSales().forEach(function(s){
+    if(s.plotIds.length < 2) return;
+    const st = postState(s);
+    // amber while the markers are still owed, settled green once they are set
+    const colour = st && st.state === 'done' ? '#2F6B37'
+                 : st && st.state === 'overdue' ? '#8C2F26' : '#B07A1E';
+    saleOutline(s.plotIds).forEach(function(seg){
+      L.polyline(seg, {color:colour, weight:4, opacity:.95, interactive:false}).addTo(layerSaleLots);
+    });
+  });
+}
+
+function rebuildAppBurials(){
+  if(!layerAppBurials) return;
+  appList = appBurials();
+  layerAppBurials.clearLayers();
+  appList.forEach(function(b){
+    L.circleMarker(b.ll, {radius:6, weight:2, color:'#F4ECD9',
+      fillColor: b.vet ? '#8C2F26' : '#211B11', fillOpacity:1})
+      .on('click', function(e){ L.DomEvent.stop(e); showBurial(b); })
+      .addTo(layerAppBurials);
+  });
+}
+
+function applyStyles(){
+  if(!layerPlots) return;
+  layerPlots.eachLayer(function(l){ l.setStyle(plotStyle(l.feature.properties)); });
+  rebuildSaleLots();
+  rebuildAppBurials();
+  applyFilter();
+}
+
+/* =====================================================================
+   EXPORT - the copy that outlives everything
+   Two files, both plain and readable by anything:
+     millfield-cemetery-<date>.csv      every plot, one row each
+     millfield-cemetery-<date>.geojson  the same, with the surveyed shapes
+   Keep these. If the app, the cloud and the GIS all vanished tomorrow,
+   the cemetery record could be rebuilt from these two files alone.
+   ===================================================================== */
+function download(name, text, mime){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], {type:mime}));
+  a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+function csvCell(v){
+  const s = String(v == null ? '' : v);
+  return /[",\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
+}
+function fullRows(){
+  return D.plots.features.map(function(f){
+    const p = f.properties, e = rec[p.id] || {};
+    return {
+      plot_id: p.id,
+      plot_number: plotName(p),          // "M20", the committee's own name for it
+      section: p.block || '',
+      lot_in_section: p.plot || '',
+      status: statusOf(p),
+      lot_owner: e.buyer || e.owner || p.owner || '',
+      lot_size: e.sizePlot || p.lotsize || '',      // LOTS.SIZEPLOT — "10X40"
+      lot_size_words: e.size || '',                 // "double", for reading
+      age: e.age || '',                             // BURIALS.AGE
+      street: e.street || '',
+      city: e.city || '',
+      state: e.state || '',
+      zip: e.zip || '',
+      email: e.email || '',
+      phone: e.phone || '',
+      authorised_burials: e.people || '',
+      posts_installed: e.postsIn ? 'YES' : (e.buyer ? 'NO' : ''),
+      posts_installed_date: e.postsDate || '',
+      letter_date: e.letterDate || '',
+      posts_due: clockStart(e) ? plusDays(clockStart(e), POST_DAYS) : '',
+      burial_name: e.name || '',
+      birth: e.birth || '',
+      death: e.death || '',
+      veteran: e.vet || '',
+      conflict: e.conflict || '',
+      burial_note: e.note || '',
+      date_buried: e.buried || '',
+      headstone_set: e.stoneIn ? 'YES' : (e.name ? 'NO' : ''),
+      headstone_date: e.stoneDate || '',
+      headstone_due: e.buried ? plusDays(e.buried, STONE_DAYS) : '',
+      family_contact: e.kin || '',
+      family_email: e.kinEmail || '',
+      family_phone: e.kinPhone || '',
+      sale_id: e.saleId || '',
+      sale_plots: e.saleCount || '',
+      sale_price: e.price || '',
+      sale_date: e.date || '',
+      sale_note: e.saleNote || '',
+      recorded_by: e.by || '',
+      recorded_at: e.at || '',
+      source: e.at ? 'app' : 'arcgis'
+    };
+  });
+}
+function exportAll(){
+  const rows = fullRows();
+  const head = Object.keys(rows[0]);
+  const csv = [head.join(',')].concat(
+    rows.map(r => head.map(h => csvCell(r[h])).join(','))).join('\r\n');
+  const stamp = today();
+  download('millfield-cemetery-' + stamp + '.csv', csv, 'text/csv');
+
+  const gj = {type:'FeatureCollection', features: D.plots.features.map(function(f,i){
+    return {type:'Feature', geometry:f.geometry, properties:rows[i]};
+  })};
+  setTimeout(function(){
+    download('millfield-cemetery-' + stamp + '.geojson', JSON.stringify(gj), 'application/geo+json');
+  }, 400);
+
+  toast('Full record exported — CSV and GeoJSON');
+}
+function exportChanges(){
+  const rows = fullRows().filter(r => rec[r.plot_id]);
+  if(!rows.length){ toast('Nothing recorded in the app yet'); return; }
+  const head = Object.keys(rows[0]);
+  const csv = [head.join(',')].concat(rows.map(r => head.map(h => csvCell(r[h])).join(','))).join('\r\n');
+  download('millfield-changes-' + today() + '.csv', csv, 'text/csv');
+  toast(rows.length + ' change' + (rows.length===1?'':'s') + ' exported for ArcGIS');
+}
+
+/* =====================================================================
+   THE RECORD OF PURCHASE
+   Word for word from the committee's own form, filled in from the record.
+   Opens ready to print or save as PDF - two copies, one for the purchaser
+   and one for the church's file.
+   ===================================================================== */
+const CHURCH = {
+  name: 'MILLFIELD BAPTIST CHURCH COMMITTEE',
+  addr: '31389 MILLFIELD ROAD',
+  town: 'WAKEFIELD, VA  23888',
+  tel:  '757-859-6896'
+};
+
+/* ---- the plan drawn on the letter ----
+   A picture of the actual ground, drawn from the survey rather than
+   photographed, so it prints clean in black and white and needs nothing from
+   the internet. The purchased plots are filled; their neighbours are drawn
+   round them for bearings. This is what lets the committee - and the family -
+   check years later that the record means the ground everyone thinks it does,
+   whatever the plot numbering says. */
+function plotDiagram(ids, opts){
+  opts = opts || {};
+  const chosen = new Set(ids.map(Number));
+  const picked = D.plots.features.filter(f => chosen.has(f.properties.id));
+  if(!picked.length) return '';
+
+  let n = -90, s = 90, e = -180, w = 180;
+  picked.forEach(function(f){
+    f.geometry.coordinates[0].forEach(function(p){
+      if(p[1] > n) n = p[1]; if(p[1] < s) s = p[1];
+      if(p[0] > e) e = p[0]; if(p[0] < w) w = p[0];
+    });
+  });
+  const midLat = (n + s) / 2;
+  const mLat = 111320, mLon = 111320 * Math.cos(midLat * Math.PI/180);
+  const pad = (opts.pad || 14) / mLat;               // metres of ground around it
+  n += pad; s -= pad; e += pad * (mLat/mLon); w -= pad * (mLat/mLon);
+
+  const W = (e - w) * mLon, H = (n - s) * mLat;      // real size, in metres
+  const X = lon => (lon - w) * mLon, Y = lat => (n - lat) * mLat;
+  const ring = f => f.geometry.coordinates[0].map(p => X(p[0]).toFixed(2) + ',' + Y(p[1]).toFixed(2)).join(' ');
+  const inView = f => f.geometry.coordinates[0].some(p => p[0] > w && p[0] < e && p[1] > s && p[1] < n);
+
+  let out = '';
+  D.plots.features.filter(inView).forEach(function(f){
+    const mine = chosen.has(f.properties.id);
+    const st = statusOf(f.properties);
+    out += '<polygon points="' + ring(f) + '" fill="' + (mine ? '#333' : st === 'available' ? '#fff' : '#e6e6e6') +
+           '" stroke="#000" stroke-width="' + (mine ? .28 : .1) + '"/>';
+  });
+  // number every plot in view, so a neighbour can be counted off from the plan
+  D.plots.features.filter(inView).forEach(function(f){
+    const c = plotCenter(f), mine = chosen.has(f.properties.id);
+    if(!f.properties.plot) return;
+    out += '<text x="' + X(c[1]).toFixed(2) + '" y="' + (Y(c[0]) + .35).toFixed(2) +
+           '" font-size="1" text-anchor="middle" fill="' + (mine ? '#fff' : '#444') + '">' +
+           esc(f.properties.plot) + '</text>';
+  });
+  (D.blocks.features || []).forEach(function(f){
+    const p = f.geometry.coordinates;
+    if(p[0] < w || p[0] > e || p[1] < s || p[1] > n) return;
+    out += '<text x="' + X(p[0]).toFixed(2) + '" y="' + Y(p[1]).toFixed(2) +
+           '" font-size="3" font-weight="bold" text-anchor="middle" fill="#000" opacity=".55">' +
+           esc(f.properties.letter) + '</text>';
+  });
+
+  // north arrow and a scale bar, so the plan can be paced out on the ground
+  out += '<g transform="translate(' + (W - 2.6).toFixed(1) + ',2.6)">' +
+         '<path d="M0,3 L0,-1.7 M0,-2.2 L-.75,-.7 M0,-2.2 L.75,-.7" stroke="#000" stroke-width=".18" fill="none"/>' +
+         '<text x="0" y="4.6" font-size="1.3" text-anchor="middle">N</text></g>';
+  out += '<g transform="translate(1.5,' + (H - 2.2).toFixed(1) + ')">' +
+         '<rect x="0" y="0" width="10" height=".45" fill="#000"/>' +
+         '<text x="0" y="1.9" font-size="1.2">10 metres</text></g>';
+
+  return '<svg viewBox="0 0 ' + W.toFixed(1) + ' ' + H.toFixed(1) + '" ' +
+         'style="width:100%;height:auto;border:1px solid #000" ' +
+         'xmlns="http://www.w3.org/2000/svg" font-family="Georgia,serif">' + out + '</svg>';
+}
+
+function letterHTML(s){
+  const plots = saleplotNames(s.plotIds);
+  const money = s.price ? '$' + Number(s.price).toFixed(2) : '';
+  const addr  = [s.street, [s.city, s.state].filter(Boolean).join(', '), s.zip].filter(Boolean).join(', ');
+  const row = function(k, v){
+    return '<div class="r"><span class="k">' + k + '</span><span class="v">' + esc(v == null ? '' : v) + '</span></div>';
+  };
+  return '<!doctype html><html><head><meta charset="utf-8">' +
+  '<title>Record of purchase - ' + esc(s.buyer || '') + '</title><style>' +
+  '@page{size:letter;margin:1in}' +
+  'body{font:12pt/1.5 Georgia,"Times New Roman",serif;color:#000;margin:0}' +
+  'header{text-align:center;line-height:1.35;margin-bottom:26px}' +
+  'header .n{font-weight:700;letter-spacing:.4px}' +
+  'h1{font-size:13pt;text-align:center;margin:26px 0 22px;letter-spacing:.3px}' +
+  '.r{display:flex;gap:10px;margin-bottom:11px;align-items:baseline}' +
+  '.r .k{font-weight:700;white-space:nowrap}' +
+  '.r .v{flex:1;border-bottom:1px solid #000;min-height:1.3em}' +
+  '.terms{margin-top:26px;text-align:justify}' +
+  '.terms p{margin:0 0 13px}' +
+  '.sign{margin-top:44px;display:flex;gap:34px}' +
+  '.sign div{flex:1;border-top:1px solid #000;padding-top:5px;font-size:10pt}' +
+  '.foot{margin-top:30px;font-size:9pt;color:#444;text-align:center}' +
+  '.plan{page-break-before:always;break-before:page;padding-top:8px}' +
+  '.plan h2{font-size:12pt;text-align:center;margin:0 0 6px;letter-spacing:.3px}' +
+  '.plan .who{text-align:center;margin:0 0 16px;font-size:11pt}' +
+  '.plan .key{font-size:9.5pt;color:#333;margin-top:12px;text-align:justify}' +
+  '@media screen{body{background:#fff;max-width:7in;margin:28px auto;padding:0 24px}' +
+  '.plan{border-top:2px dashed #bbb;margin-top:40px;padding-top:28px}}' +
+  '</style></head><body>' +
+  '<header><div class="n">' + CHURCH.name + '</div><div>' + CHURCH.addr + '</div>' +
+    '<div>' + CHURCH.town + '</div><div>' + CHURCH.tel + '</div></header>' +
+  '<h1>RECORD OF PURCHASE FOR BURIAL PLOTS &ndash; MILLFIELD CHURCH CEMETERY</h1>' +
+  row('DATE:', fmtDate(s.date)) +
+  row('PURCHASER:', s.buyer) +
+  row('ADDRESS:', addr) +
+  row('NUMBER OF 5X10 PLOTS PURCHASED:', plots.length) +
+  row('PLOT NUMBERS:', plots.join(', ')) +
+  row('PURCHASE PRICE:', money) +
+  (s.people ? row('NAMES ON RECORD FOR BURIAL:', s.people.split('\n').join('; ')) : '') +
+  row('NOTES:', s.saleNote) +
+  '<div class="terms">' +
+    '<p>PURCHASERS HAVE ' + POST_DAYS + ' DAYS TO MARK PURCHASED LOTS AT THEIR OWN EXPENSE WITH FOUR ' +
+    'STANDARDIZED 6&rdquo;X6&rdquo; GRANITE CORNER MARKERS WITH ONE INITIAL ON TOP OF EACH. THE PURCHASER IS ' +
+    'RESPONSIBLE FOR NOTIFYING A MEMBER OF THE CHURCH CEMETERY COMMITTEE WHEN THIS HAS BEEN COMPLETED. ' +
+    'WHEN THIS IS DONE THE PLOTS WILL BE PLACED PERMANENTLY IN YOUR NAME.</p>' +
+    (clockStart(s) ? '<p><b>Markers are due by ' +
+      esc(fmtDate(plusDays(clockStart(s), POST_DAYS))) + '.</b></p>' : '') +
+    '<p>WITHIN 180 DAYS OF A BURIAL THE FAMILY WILL BE REQUIRED TO MARK THE GRAVE SITE WITH A PERMANENT ' +
+    'MARKER STATING THE INDIVIDUAL&rsquo;S FULL NAME, DATE OF BIRTH AND DATE OF DEATH.</p>' +
+    '<p>PLEASE SEE &ldquo;MILLFIELD CEMETERY POLICIES&rdquo; FOR OTHER RULES &amp; REGULATIONS.</p>' +
+  '</div>' +
+  '<div class="sign"><div>PURCHASER</div><div>CEMETERY COMMITTEE RECORDER</div></div>' +
+  '<div class="foot">Recorded ' + esc(fmtDate((s.at || '').slice(0,10)) || '') +
+    (s.by ? ' by ' + esc(s.by) : '') + '</div>' +
+
+  /* page two: where the ground actually is */
+  '<div class="plan">' +
+    '<h2>ADDENDUM &ndash; LOCATION OF PLOTS PURCHASED</h2>' +
+    '<p class="who">' + esc(s.buyer || '') + ' &middot; ' + plots.length + ' plot' +
+      (plots.length === 1 ? '' : 's') + ' &middot; ' + esc(plots.join(', ')) + '</p>' +
+    plotDiagram(s.plotIds) +
+    '<p class="key"><b>Filled squares</b> are the plots purchased. Surrounding plots are shown for bearings, ' +
+      'each with its lot number; large letters are the cemetery sections. Drawn from the church&rsquo;s survey, ' +
+      'north to the top.</p>' +
+    '<div class="sign"><div>PURCHASER</div><div>CEMETERY COMMITTEE RECORDER</div></div>' +
+  '</div>' +
+  '</body></html>';
+}
+
+/* The other plots in the same sale that still have no section set. */
+function saleMatesNeedingSection(id){
+  const e = rec[id];
+  if(!e || !e.saleId) return [];
+  return Object.keys(rec).filter(function(k){
+    return +k !== +id && rec[k].saleId === e.saleId && !rec[k].section && !labelSure(plotById(k));
+  }).map(Number);
+}
+
+function saveSection(id){
+  const L = $('#secPick').value;
+  if(!L){ toast('Pick a letter first'); return; }
+  const also = $('#secAll') && $('#secAll').checked ? saleMatesNeedingSection(id) : [];
+  const stamp = {section:L, sectionBy: who(), sectionAt: new Date().toISOString()};
+  cloudWrite(id, stamp);
+  also.forEach(function(k){ cloudWrite(k, stamp); });
+  showPlot(id);
+  toast('Recorded as ' + L + (plotById(id).plot || '') +
+        (also.length ? ' — and ' + also.length + ' more in this sale' : ''));
+}
+
+function markStone(id){
+  cloudWrite(id, {stoneIn:true, stoneDate: today(), stoneBy: who()});
+  closePanel();
+  toast('Headstone recorded as set');
+}
+
+function remindFamily(id){
+  const e = rec[id];
+  if(!e) return;
+  const st = stoneState(e);
+  const body = 'Millfield Church Cemetery\n\n' +
+    'Dear ' + (e.kin || 'family') + ',\n\n' +
+    'This concerns the grave of ' + (e.name || '') + ' in plot ' + plotNameById(id) + '.\n\n' +
+    'Within ' + STONE_DAYS + ' days of a burial the family is required to mark the grave with a permanent ' +
+    'marker giving the full name, date of birth and date of death.\n\n' +
+    (st && st.state === 'overdue'
+      ? 'That was due by ' + (fmtDate(st.due) || '') + ', which has now passed by ' + st.days + ' days.\n\n'
+      : st && st.due ? 'That falls due on ' + (fmtDate(st.due) || '') + '.\n\n' : '') +
+    'If the marker is already in place, please tell a member of the Cemetery Committee so we can correct ' +
+    'our record.\n\n' + CHURCH.name + '\n' + CHURCH.tel;
+  openPanel(
+    '<h2>Reminder about ' + esc(e.name || '') + '</h2>' +
+    '<p class="note">Nothing has been sent. Pick how to send it, or copy the words.</p>' +
+    (e.kinEmail ? '<a class="btn" href="mailto:' + encodeURIComponent(e.kinEmail) +
+      '?subject=' + encodeURIComponent('Millfield Church Cemetery — headstone') +
+      '&body=' + encodeURIComponent(body) + '">&#9993; Email ' + esc(e.kinEmail) + '</a>' : '') +
+    (e.kinPhone ? '<a class="btn" href="sms:' + esc(e.kinPhone.replace(/[^0-9+]/g,'')) +
+      '?&body=' + encodeURIComponent(body) + '">&#128241; Text ' + esc(e.kinPhone) + '</a>' : '') +
+    '<label class="f" style="margin-top:14px"><span>The message</span><textarea rows="12" id="remTxt">' +
+      esc(body) + '</textarea></label>' +
+    '<button class="btn sec" onclick="copyReminder()">&#128203; Copy the words</button>' +
+    '<button class="btn sec" onclick="closePanel()">Close</button>');
+}
+
+/* Tick the markers off across every plot in the sale at once. */
+function markPosts(saleId){
+  const s = allSales().find(function(x){ return x.saleId === saleId; });
+  if(!s) return;
+  s.plotIds.forEach(function(id){
+    cloudWrite(id, {postsIn:true, postsDate: today(), postsBy: who()});
+  });
+  closePanel();
+  toast('Markers recorded as set — the plots are permanently in ' + (s.buyer || 'their') + ' name');
+}
+
+/* The reminder the committee sends by hand. Nothing here goes out on its own -
+   see the note in the committee panel about automatic notices. */
+function reminderText(s){
+  const due = plusDays(clockStart(s), POST_DAYS);
+  const st  = postState(s);
+  const plots = saleplotNames(s.plotIds).join(', ');
+  return 'Millfield Church Cemetery\n\n' +
+    'Dear ' + (s.buyer || 'purchaser') + ',\n\n' +
+    'Our records show your purchase of ' + s.plotIds.length + ' burial plot' +
+      (s.plotIds.length === 1 ? '' : 's') + ' (' + plots + ') on ' + (fmtDate(s.date) || '') + '.\n\n' +
+    'The four granite corner markers for these plots were due by ' + (fmtDate(due) || '') + '. ' +
+    (st && st.state === 'overdue'
+      ? 'That date has now passed by ' + st.days + ' days.\n\n'
+      : 'That date is coming up.\n\n') +
+    'Once the markers are set, please let a member of the Cemetery Committee know, and the plots will be ' +
+    'placed permanently in your name. If they are already done, please tell us so we can correct our record.\n\n' +
+    'Millfield Baptist Church Cemetery Committee\n' + CHURCH.tel;
+}
+function remindPurchaser(saleId){
+  const s = allSales().find(function(x){ return x.saleId === saleId; });
+  if(!s) return;
+  const body = reminderText(s);
+  openPanel(
+    '<h2>Reminder for ' + esc(s.buyer || '') + '</h2>' +
+    '<p class="note">Nothing has been sent. Pick how to send it, or copy the words and send it your own way.</p>' +
+    (s.email ? '<a class="btn" href="mailto:' + encodeURIComponent(s.email) +
+      '?subject=' + encodeURIComponent('Millfield Church Cemetery — corner markers') +
+      '&body=' + encodeURIComponent(body) + '">&#9993; Email ' + esc(s.email) + '</a>' : '') +
+    (s.phone ? '<a class="btn" href="sms:' + esc(s.phone.replace(/[^0-9+]/g,'')) +
+      '?&body=' + encodeURIComponent(body) + '">&#128241; Text ' + esc(s.phone) + '</a>' : '') +
+    '<label class="f" style="margin-top:14px"><span>The message</span><textarea rows="12" id="remTxt">' +
+      esc(body) + '</textarea></label>' +
+    '<button class="btn sec" onclick="copyReminder()">&#128203; Copy the words</button>' +
+    '<button class="btn sec" onclick="closePanel()">Close</button>');
+}
+function copyReminder(){
+  const t = $('#remTxt');
+  t.select();
+  navigator.clipboard.writeText(t.value).then(function(){ toast('Copied'); },
+    function(){ toast('Select the text and copy it'); });
+}
+
+function printLetter(saleId){
+  const s = allSales().find(function(x){ return x.saleId === saleId; });
+  if(!s){ toast('That sale is not in the record'); return; }
+  const w = window.open('', '_blank');
+  if(!w){ toast('Allow pop-ups so the letter can open'); return; }
+  w.document.write(letterHTML(s));
+  w.document.close();
+}
+
+/* ---------- layers ---------- */
+function layerFor(key){
+  return {plots:layerPlots, burials:layerBurials, lots:layerLots,
+          numbers:layerNumbers, blocks:layerBlocks, posts:layerPosts}[key];
+}
+function setLayer(key, on){
+  if(key === 'aerial'){ aerialShow(on); return; }
+  if(key === 'survey'){ surveyShow(on); return; }
+  if(key === 'numbers'){ window._labels(); return; }
+  if(key === 'burials'){   // the graves layer is two layers: surveyed, and recorded since
+    if(on && !map.hasLayer(layerAppBurials)) layerAppBurials.addTo(map);
+    if(!on && map.hasLayer(layerAppBurials)) map.removeLayer(layerAppBurials);
+  }
+  const l = layerFor(key);
+  if(!l) return;
+  if(on && !map.hasLayer(l)) l.addTo(map);
+  if(!on && map.hasLayer(l)) map.removeLayer(l);
+}
+function syncLayers(){
+  $$('#layers input[data-l]').forEach(function(cb){ setLayer(cb.dataset.l, cb.checked); });
+  $('#legend').style.display = $('#layers input[data-l="plots"]').checked ? '' : 'none';
+}
+
+/* ---------- image overlays (committee only) ---------- */
+const AERIAL_HOME = { tl:[36.8799892,-76.9677959], tr:[36.8796862,-76.9669292], bl:[36.8794482,-76.9680734] };
+const SURVEY_HOME = { tl:[36.8804736,-76.9675148], tr:[36.8780706,-76.9659302], bl:[36.8795869,-76.9699269] };
+
+function aerialShow(on){
+  if(!aerial) aerial = L.imageOverlay.rotated('data/aerial.jpg',
+    L.latLng(AERIAL_HOME.tl), L.latLng(AERIAL_HOME.tr), L.latLng(AERIAL_HOME.bl), {opacity:1, interactive:false});
+  $('#aerialbar').classList.toggle('on', on);
+  $('#btnAerial').classList.toggle('on', on);
+  if(on){ $('#surveybar').classList.remove('on'); aerial.addTo(map); }
+  else if(map.hasLayer(aerial)) map.removeLayer(aerial);
+  const cb = $('#layers input[data-l="aerial"]'); if(cb) cb.checked = on;
+}
+function surveyShow(on){
+  if(!survey) survey = L.imageOverlay.rotated('data/survey.png',
+    L.latLng(SURVEY_HOME.tl), L.latLng(SURVEY_HOME.tr), L.latLng(SURVEY_HOME.bl), {opacity:0.85, interactive:false});
+  $('#surveybar').classList.toggle('on', on);
+  $('#btnSurvey').classList.toggle('on', on);
+  if(on){ $('#aerialbar').classList.remove('on'); survey.addTo(map); if(survey.bringToBack) survey.bringToBack(); }
+  else if(map.hasLayer(survey)) map.removeLayer(survey);
+  const cb = $('#layers input[data-l="survey"]'); if(cb) cb.checked = on;
+}
+
+/* Every purchase the app knows about, with its marker clock. Overdue ones
+   come first and in red - this is the standing to-do list the committee
+   would otherwise keep in somebody's head. */
+function salesSection(){
+  const sales = allSales();
+  if(!sales.length) return '';
+  const late = sales.filter(function(s){ const st = postState(s); return st && st.state === 'overdue'; });
+  const rest = sales.filter(function(s){ return late.indexOf(s) < 0; });
+  const line = function(s){
+    const st = postState(s);
+    const when = !st ? ''
+      : st.state === 'done'    ? 'markers set'
+      : st.state === 'unknown' ? 'markers not confirmed'
+      : st.state === 'overdue' ? st.days + ' days overdue'
+      : st.days + ' days left';
+    return '<div class="kv"><span class="k">' + esc(s.buyer || 'unnamed') + '<br>' +
+      '<small style="color:var(--ink3)">' + s.plotIds.length + ' plot' + (s.plotIds.length===1?'':'s') +
+      ' · ' + esc(fmtDate(s.date) || 'no date') + ' · ' + when + '</small></span>' +
+      '<button class="v" style="color:var(--admin);font-weight:700" onclick="printLetter(\'' +
+      esc(s.saleId) + '\')">Letter</button></div>';
+  };
+  return '<div class="sec-h">Purchases</div>' +
+    (late.length
+      ? '<div class="overdue"><b>' + late.length + ' purchase' + (late.length===1?'':'s') +
+        ' past the ' + POST_DAYS + '-day marker deadline</b>' +
+        late.map(function(s){
+          const st = postState(s);
+          return '<div class="row"><span>' + esc(s.buyer||'') + ' — ' + st.days + ' days</span>' +
+            (s.email || s.phone
+              ? '<button style="color:#8C2F26;font-weight:700" onclick="remindPurchaser(\'' +
+                esc(s.saleId) + '\')">Remind</button>'
+              : '<span style="color:#8C2F26">no contact on file</span>') + '</div>';
+        }).join('') + '</div>'
+      : '') +
+    late.map(line).join('') + rest.map(line).join('');
+}
+
+/* Graves still owing a headstone. Same shape as the purchases list, but the
+   180 days are the family's to keep, not the purchaser's. */
+function stonesSection(){
+  const owing = burialsNeedingStones();
+  if(!owing.length) return '';
+  const late = owing.filter(function(e){ return stoneState(e).state === 'overdue'; });
+  return '<div class="sec-h">Headstones owed</div>' +
+    (late.length
+      ? '<div class="overdue"><b>' + late.length + ' grave' + (late.length===1?'':'s') +
+        ' past the ' + STONE_DAYS + '-day headstone deadline</b>' +
+        late.map(function(e){
+          return '<div class="row"><span>' + esc(e.name||'') + ' — ' + stoneState(e).days + ' days</span>' +
+            (e.kinEmail || e.kinPhone
+              ? '<button style="color:#8C2F26;font-weight:700" onclick="remindFamily(' + e.plotId +
+                ')">Remind</button>'
+              : '<span style="color:#8C2F26">no contact on file</span>') + '</div>';
+        }).join('') + '</div>'
+      : '') +
+    owing.map(function(e){
+      const st = stoneState(e);
+      const when = st.state === 'overdue' ? st.days + ' days overdue'
+                 : st.state === 'unknown' ? 'no date of burial on file'
+                 : st.days + ' days left';
+      return '<div class="kv"><span class="k">' + esc(e.name||'') + '<br>' +
+        '<small style="color:var(--ink3)">plot ' + esc(plotNameById(e.plotId)) + ' · ' + when +
+        '</small></span><button class="v" style="color:var(--admin);font-weight:700" onclick="showPlot(' +
+        e.plotId + ')">Open</button></div>';
+    }).join('');
+}
+
+/* =====================================================================
+   THE LEDGER
+   Every piece of ground that is spoken for, on one page, the way a
+   committee reads it: one line per purchase, not per plot. The 56 family
+   lots from the survey are in here too - thin rows, because the old
+   records hold little more than a name - since a ledger that showed two
+   purchases and omitted 131 plots would be worse than none.
+   ===================================================================== */
+let ledgerSort = {key:'who', dir:1}, ledgerFilter = 'all';
+
+function ledgerRows(){
+  const rows = [];
+  allSales().forEach(function(s){
+    const ps = postState(s);
+    rows.push({
+      who: s.buyer || '', plots: saleplotNames(s.plotIds).join(', '), count: s.plotIds.length,
+      size: s.sizePlot || '', status: statusOf(plotById(s.plotIds[0])) || 'reserved',
+      date: s.date || '', paid: s.price ? Number(s.price) : '',
+      markers: !ps ? '' : ps.state === 'done' ? 'set'
+             : ps.state === 'overdue' ? ps.days + ' days over'
+             : ps.state === 'unknown' ? 'not confirmed' : ps.days + ' days left',
+      late: !!(ps && ps.state === 'overdue'),
+      contact: [s.email, s.phone].filter(Boolean).join(' · '),
+      saleId: s.saleId, source: 'app'
+    });
+  });
+  (D.lots.features || []).forEach(function(f){
+    const p = f.properties;
+    rows.push({
+      who: p.owner || '', plots: p.plots || '', count: '', size: p.size || '',
+      status: 'sold', date: '', paid: '', markers: 'not confirmed', late: false,
+      contact: '', saleId: '', source: 'survey'
+    });
+  });
+  const f = ledgerFilter;
+  return rows.filter(function(r){
+    if(f === 'reserved') return r.status === 'reserved';
+    if(f === 'sold')     return r.status === 'sold';
+    if(f === 'late')     return r.late;
+    if(f === 'app')      return r.source === 'app';
+    return true;
+  }).sort(function(a,b){
+    const k = ledgerSort.key;
+    const A = a[k] == null ? '' : a[k], B = b[k] == null ? '' : b[k];
+    if(typeof A === 'number' && typeof B === 'number') return (A - B) * ledgerSort.dir;
+    return String(A).localeCompare(String(B)) * ledgerSort.dir;
+  });
+}
+
+const LEDGER_COLS = [
+  {k:'who',     h:'Purchaser / owner'},
+  {k:'plots',   h:'Plots'},
+  {k:'size',    h:'Size'},
+  {k:'status',  h:'Status'},
+  {k:'date',    h:'Purchased'},
+  {k:'paid',    h:'Paid'},
+  {k:'markers', h:'Corner markers'},
+  {k:'contact', h:'Contact'}
+];
+
+function ledgerSortBy(k){
+  ledgerSort = {key:k, dir: ledgerSort.key === k ? -ledgerSort.dir : 1};
+  showLedger();
+}
+function ledgerFilterBy(f){ ledgerFilter = f; showLedger(); }
+
+function ledgerTable(forPrint){
+  const rows = ledgerRows();
+  const head = LEDGER_COLS.map(function(c){
+    const arrow = ledgerSort.key === c.k ? (ledgerSort.dir > 0 ? ' ▲' : ' ▼') : '';
+    return forPrint ? '<th>' + c.h + '</th>'
+                    : '<th onclick="ledgerSortBy(\'' + c.k + '\')">' + c.h + arrow + '</th>';
+  }).join('');
+  const body = rows.map(function(r){
+    return '<tr' + (r.late ? ' class="late"' : '') + '>' +
+      '<td>' + esc(r.who) + (r.source === 'survey' ? ' <span class="src">survey</span>' : '') + '</td>' +
+      '<td>' + esc(r.plots) + '</td>' +
+      '<td>' + esc(r.size) + '</td>' +
+      '<td>' + LABEL[r.status] + '</td>' +
+      '<td>' + esc(fmtDate(r.date) || '') + '</td>' +
+      '<td>' + (r.paid === '' ? '' : '$' + r.paid) + '</td>' +
+      '<td>' + esc(r.markers) + '</td>' +
+      '<td>' + esc(r.contact) + '</td></tr>';
+  }).join('');
+  return '<table class="ledger"><thead><tr>' + head + '</tr></thead><tbody>' + body +
+    '</tbody></table>' + (rows.length ? '' : '<p class="note">Nothing to show.</p>');
+}
+
+function showLedger(){
+  const all = ledgerRows().length;
+  const chip = function(f, label){
+    return '<button class="chip' + (ledgerFilter === f ? ' on' : '') +
+           '" onclick="ledgerFilterBy(\'' + f + '\')">' + label + '</button>';
+  };
+  openPanel(
+    '<h2>The ledger</h2>' +
+    '<p class="note" style="margin-top:0">Every piece of ground that is spoken for. ' + all +
+      ' line' + (all === 1 ? '' : 's') + ' &mdash; tap a heading to sort.</p>' +
+    '<div class="ledgerchips">' + chip('all','All') + chip('app','Recorded here') +
+      chip('reserved','Reserved') + chip('sold','Sold') + chip('late','Markers overdue') + '</div>' +
+    '<div class="ledgerwrap">' + ledgerTable(false) + '</div>' +
+    '<button class="btn" onclick="printLedger()">&#128424; Print this</button>' +
+    '<button class="btn sec" onclick="exportLedger()">&#128190; Save it as a spreadsheet</button>' +
+    '<button class="btn sec" onclick="closePanel()">Close</button>');
+}
+
+function printLedger(){
+  const w = window.open('', '_blank');
+  if(!w){ toast('Allow pop-ups so it can open'); return; }
+  w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Millfield Cemetery — ledger</title>' +
+    '<style>@page{size:letter landscape;margin:.6in}' +
+    'body{font:10pt/1.4 Georgia,serif;color:#000}' +
+    'h1{font-size:13pt;text-align:center;margin:0 0 4px}' +
+    '.sub{text-align:center;font-size:9pt;color:#444;margin:0 0 16px}' +
+    'table{width:100%;border-collapse:collapse}' +
+    'th,td{border:1px solid #999;padding:5px 7px;text-align:left;vertical-align:top}' +
+    'th{background:#eee;font-size:9pt;text-transform:uppercase;letter-spacing:.4px}' +
+    'tr.late td{background:#f6e4e1}' +
+    '.src{font-size:8pt;color:#666}' +
+    '</style></head><body>' +
+    '<h1>MILLFIELD CHURCH CEMETERY &mdash; RECORD OF PLOTS SOLD AND RESERVED</h1>' +
+    '<p class="sub">' + esc(fmtDate(today())) + '</p>' +
+    ledgerTable(true) + '</body></html>');
+  w.document.close();
+}
+
+function exportLedger(){
+  const rows = ledgerRows();
+  if(!rows.length){ toast('Nothing to save'); return; }
+  const head = LEDGER_COLS.map(c => c.h).concat(['Plots in sale','Source']);
+  const csv = [head.join(',')].concat(rows.map(function(r){
+    return LEDGER_COLS.map(c => csvCell(r[c.k])).concat([csvCell(r.count), csvCell(r.source)]).join(',');
+  })).join('\r\n');
+  download('millfield-ledger-' + today() + '.csv', csv, 'text/csv');
+  toast(rows.length + ' lines saved');
+}
+
+/* ---------- the committee door ---------- */
+function adminPanel(){
+  if(isAdmin){
+    const waiting = deviceOnlyIds().length;
+    const mine = Object.keys(rec).length;
+    openPanel(
+      '<h2>Committee mode</h2>' +
+      '<p class="note">Signed in as <b>' + esc((cloud.user && cloud.user.email) || 'this device') + '</b>.<br>' +
+        mine + ' plot' + (mine===1?'':'s') + ' recorded through the app · ' + cloudLabel() + '.</p>' +
+      (waiting ? '<button class="btn adm" onclick="pushDeviceOnly()">&#11014; Send ' + waiting +
+                 ' device-only change' + (waiting===1?'':'s') + ' to the cloud</button>' : '') +
+      '<button class="btn" onclick="showLedger()">&#128203; The ledger &mdash; everything sold and reserved</button>' +
+      salesSection() + stonesSection() +
+      '<div class="sec-h">Keep a copy</div>' +
+      '<button class="btn" onclick="exportAll()">&#128190; Export the whole record (CSV + GeoJSON)</button>' +
+      '<p class="note">The plain-file copy of everything. Keep the newest one somewhere safe — Excel reads ' +
+        'the CSV, any mapping program reads the GeoJSON, and neither needs an account or a subscription.</p>' +
+      '<button class="btn sec" onclick="exportChanges()">&#128228; Export just the app changes for ArcGIS</button>' +
+      '<div class="sec-h">Who can record</div>' +
+      (members.length
+        ? members.map(function(m){
+            const me = cloud.user && cloud.user.email === m.email;
+            return '<div class="kv"><span class="k">' + esc(m.email) + (me ? ' (you)' : '') + '</span>' +
+              (me ? '<span class="v">&mdash;</span>'
+                  : '<button class="v" style="color:#8C2F26;font-weight:700" onclick="removeMember(\'' +
+                    esc(m.email) + '\')">Remove</button>') + '</div>';
+          }).join('')
+        : '<p class="note">Nobody listed yet.</p>') +
+      '<label class="f" style="margin-top:12px"><span>Add a committee member</span>' +
+        '<input type="email" id="mEmail" placeholder="their email address"></label>' +
+      '<button class="btn sec" onclick="addMember()">&#10133; Add them</button>' +
+      '<p class="note">They sign in with that email on their own phone &mdash; the sign-in screen will make ' +
+        'them an account the first time. Anyone on this list can add the next one, so the committee can hand ' +
+        'itself on without help from anybody.</p>' +
+      '<button class="btn sec" onclick="signOut()">&#128275; Sign out</button>' +
+      '<button class="btn sec" onclick="closePanel()">Close</button>');
+    return;
+  }
+  openPanel(
+    '<h2>Committee sign-in</h2>' +
+    '<p class="note">For recording burials and sales. Visitors do not need this.</p>' +
+    '<label class="f"><span>Email</span><input type="email" id="ae" autocomplete="username" value="' +
+      esc(localStorage.getItem('millfield_email')||'') + '"></label>' +
+    '<label class="f"><span>Password</span><input type="password" id="ap" autocomplete="current-password"></label>' +
+    '<button class="btn adm" onclick="signIn()">Sign in</button>' +
+    '<button class="btn sec" onclick="signUp()">First time — make my sign-in</button>' +
+    '<p class="note">Making a sign-in does not by itself let you change anything. A committee member has to ' +
+      'put your email on the roll first.</p>' +
+    (cloud.ready ? '' : '<p class="note">No connection right now — the first sign-in on a device needs one. ' +
+                        'After that it holds, and the app keeps working at the cemetery with no signal.</p>') +
+    '<button class="btn sec" onclick="closePanel()">Cancel</button>');
+  setTimeout(function(){
+    const el = $('#ap');
+    if(el) el.onkeydown = function(ev){ if(ev.key === 'Enter') signIn(); };
+  }, 120);
+}
+
+function signIn(){
+  if(!cloud.ready){ toast('No connection to sign in with'); return; }
+  const em = ($('#ae').value||'').trim().toLowerCase(), pw = $('#ap').value||'';
+  if(!em || !pw){ toast('Email and password, please'); return; }
+  auth.signInWithEmailAndPassword(em, pw)
+    .then(function(){ localStorage.setItem('millfield_email', em); closePanel(); })
+    .catch(function(e){
+      toast(e.code === 'auth/invalid-credential' || e.code === 'auth/wrong-password'
+        ? 'Email or password not recognised' : (e.code || e.message), 4000);
+    });
+}
+function signUp(){
+  if(!cloud.ready){ toast('No connection to sign up with'); return; }
+  const em = ($('#ae').value||'').trim().toLowerCase(), pw = $('#ap').value||'';
+  if(!em || pw.length < 6){ toast('Email, and a password of at least six characters'); return; }
+  auth.createUserWithEmailAndPassword(em, pw)
+    .then(function(){ localStorage.setItem('millfield_email', em); closePanel(); })
+    .catch(function(e){
+      toast(e.code === 'auth/email-already-in-use'
+        ? 'That email already has a sign-in — use Sign in' : (e.code || e.message), 4000);
+    });
+}
+function signOut(){ if(auth) auth.signOut(); closePanel(); }
+
+function adminOn(){
+  if(isAdmin) return;
+  isAdmin = true;
+  document.body.classList.add('isadmin');
+  $('#topbar').classList.add('admin');
+  $('#btnAdmin').textContent = '🔓';
+  $('#btnAdmin').classList.add('on','adminbtn');
+  toast('Committee mode — tap a plot to record a burial or sale', 3400);
+}
+function adminOff(quiet){
+  if(!isAdmin) return;
+  isAdmin = false;
+  document.body.classList.remove('isadmin');
+  $('#topbar').classList.remove('admin');
+  $('#btnAdmin').textContent = '🔒';
+  $('#btnAdmin').classList.remove('on');
+  ['posts','aerial','survey'].forEach(function(k){
+    const cb = $('#layers input[data-l="' + k + '"]');
+    if(cb){ cb.checked = false; setLayer(k, false); }
+  });
+  const bl = $('#layers input[data-l="blocks"]');
+  if(bl){ bl.checked = true; setLayer('blocks', true); }
+  if(!quiet) toast('Signed out');
+}
+
+/* ---------- filters ---------- */
+function applyFilter(){
+  layerPlots.eachLayer(function(l){
+    const s = plotStyle(l.feature.properties);
+    const show = filter !== 'available' || statusOf(l.feature.properties) === 'available';
+    l.setStyle({fillOpacity: show ? s.fillOpacity : .05, opacity: show ? s.opacity : .12});
+  });
+  layerBurials.eachLayer(function(l){
+    const show = filter === 'veterans' ? !!l.feature.properties.vet : (filter !== 'available');
+    l.setStyle({opacity: show ? 1 : 0, fillOpacity: show ? 1 : 0});
+  });
+  layerAppBurials.getLayers().forEach(function(l, i){
+    const show = filter === 'veterans' ? !!(appList[i] && appList[i].vet) : (filter !== 'available');
+    l.setStyle({opacity: show ? 1 : 0, fillOpacity: show ? 1 : 0});
+  });
+}
+
+/* ---------- wiring ---------- */
+function wire(){
+  $$('#filters .chip').forEach(function(b){
+    b.onclick = function(){
+      $$('#filters .chip').forEach(function(x){ x.classList.remove('on'); });
+      b.classList.add('on'); filter = b.dataset.f; applyFilter();
+    };
+  });
+
+  const BASES = [{l:function(){ return baseAerial; }, i:'🛰', n:'Esri imagery'},
+                 {l:function(){ return baseVGIN;   }, i:'🇻', n:'Virginia VBMP imagery'},
+                 {l:function(){ return basePlain;  }, i:'🗺', n:'Street map'}];
+  let bi = 0;
+  $('#btnBase').onclick = function(){
+    map.removeLayer(BASES[bi].l());
+    bi = (bi + 1) % BASES.length;
+    BASES[bi].l().addTo(map);
+    $('#btnBase').textContent = BASES[bi].i;
+    toast(BASES[bi].n);
+  };
+
+  $('#btnLocate').onclick = function(){
+    if(!navigator.geolocation) return;
+    $('#btnLocate').classList.add('on');
+    navigator.geolocation.getCurrentPosition(function(p){
+      const ll = [p.coords.latitude, p.coords.longitude];
+      if(meMarker) map.removeLayer(meMarker);
+      meMarker = L.circleMarker(ll,{radius:9,color:'#fff',weight:3,fillColor:'#1F6FEB',fillOpacity:1}).addTo(map);
+      map.setView(ll, 20);
+      $('#btnLocate').classList.remove('on');
+    }, function(){ $('#btnLocate').classList.remove('on'); toast('Could not get your location'); },
+       {enableHighAccuracy:true, timeout:15000});
+  };
+
+  $('#btnLayers').onclick = function(){
+    const p = $('#layers');
+    p.classList.toggle('on');
+    $('#btnLayers').classList.toggle('on', p.classList.contains('on'));
+  };
+  $('#layersClose').onclick = function(){
+    $('#layers').classList.remove('on'); $('#btnLayers').classList.remove('on');
+  };
+  $$('#layers input[data-l]').forEach(function(cb){ cb.onchange = syncLayers; });
+
+  $('#btnAerial').onclick = function(){ aerialShow(!$('#aerialbar').classList.contains('on')); };
+  $('#aerialClose').onclick = function(){ aerialShow(false); };
+  $('#aerialOp').oninput = function(e){ if(aerial) aerial.setOpacity(e.target.value/100); };
+  $('#btnSurvey').onclick = function(){ surveyShow(!$('#surveybar').classList.contains('on')); };
+  $('#surveyClose').onclick = function(){ surveyShow(false); };
+  $('#surveyOp').oninput = function(e){ if(survey) survey.setOpacity(e.target.value/100); };
+
+  $('#btnAdmin').onclick = adminPanel;
+
+  $('#btnSearch').onclick = function(){
+    const s = $('#search'); s.classList.toggle('on');
+    if(s.classList.contains('on')) $('#q').focus(); else $('#results').classList.remove('on');
+  };
+  $('#q').oninput = function(e){
+    const q = e.target.value.trim().toLowerCase();
+    const box = $('#results');
+    if(q.length < 2){ box.classList.remove('on'); return; }
+    /* one list: the surveyed burials, everything recorded since - so a name
+       entered this morning is findable this afternoon - and the plots
+       themselves, because the committee looks for "M28" far more often than
+       it looks for a person */
+    const all = D.burials.features.map(function(f){
+        return {who:f.properties, ll:[f.geometry.coordinates[1], f.geometry.coordinates[0]]};
+      }).concat(appList.map(function(b){ return {who:b, ll:b.ll}; }));
+    const people = all.filter(h => (h.who.name||'').toLowerCase().includes(q));
+    /* match either the survey's lot number or whatever the committee typed,
+       so both "20" and "F20" find the same plot */
+    const plots = D.plots.features.filter(function(f){
+        const bare = (f.properties.plot || '').toLowerCase();
+        const full = plotName(f.properties).toLowerCase();
+        return (bare && bare.indexOf(q) === 0) || (full && full.indexOf(q) === 0);
+      }).slice(0,25).map(function(f){
+        return {plot:f.properties, ll:plotCenter(f)};
+      });
+    const hits = plots.concat(people).slice(0,40);
+    box.innerHTML = hits.length
+      ? hits.map(function(h,i){
+          if(h.plot){
+            const st = statusOf(h.plot);
+            const e  = rec[h.plot.id];
+            return '<button data-i="' + i + '"><div class="nm">Plot ' + esc(plotName(h.plot)) + '</div>' +
+              '<div class="dt">' + LABEL[st] + (e && e.buyer ? ' &middot; ' + esc(e.buyer)
+                                              : h.plot.owner ? ' &middot; ' + esc(h.plot.owner) : '') +
+              '</div></button>';
+          }
+          return '<button data-i="' + i + '"><div class="nm">' + esc(h.who.name) +
+            '</div><div class="dt">' + esc(years(h.who.birth, h.who.death)) + '</div></button>';
+        }).join('')
+      : '<div class="empty">Nothing found by that name or plot number.</div>';
+    box.classList.add('on');
+    box.querySelectorAll('button').forEach(function(b){
+      b.onclick = function(){
+        const h = hits[+b.dataset.i];
+        map.setView(h.ll, 21);
+        box.classList.remove('on'); $('#search').classList.remove('on'); $('#q').value = '';
+        if(h.plot) showPlot(h.plot.id); else showBurial(h.who);
+      };
+    });
+  };
+
+  $('#panel').onclick = function(e){ if(e.target.id === 'panel') closePanel(); };
+}
+
+if('serviceWorker' in navigator && location.protocol !== 'file:'){
+  navigator.serviceWorker.register('sw.js').catch(function(){});
+}
+
+load().catch(function(e){
+  $('#loading').innerHTML = '<div style="padding:24px;text-align:center">Could not load the cemetery data.<br><small>' +
+    esc(e.message) + '</small></div>';
+});
+</script>
+</body>
+</html>
