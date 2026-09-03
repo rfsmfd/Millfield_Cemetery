@@ -333,7 +333,7 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
      Export writes the whole thing back out as plain CSV and GeoJSON - the
      copy that outlives any account, any subscription, and any one person.
    ===================================================================== */
-const BUILD = 23;
+const BUILD = 24;
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -853,7 +853,10 @@ function tidyPrivate(){
   Object.keys(pubRec).forEach(function(id){
     const exposed = {};
     PRIVATE_FIELDS.forEach(function(f){
-      if(pubRec[id][f] !== undefined && pubRec[id][f] !== '') exposed[f] = pubRec[id][f];
+      /* Any private key at all, even an empty one. An empty field leaks
+         nothing, but leaving the names of private fields sitting in the public
+         record is untidy and invites someone later to fill one in. */
+      if(pubRec[id][f] !== undefined) exposed[f] = pubRec[id][f];
     });
     if(Object.keys(exposed).length) jobs.push({id:id, fields:exposed});
   });
