@@ -87,14 +87,19 @@ body.isadmin .adminonly{display:flex !important}
 
 #panel{position:fixed;inset:0;z-index:900;background:rgba(30,26,18,.6);display:none;align-items:flex-end}
 #panel.on{display:flex}
-#panelbody{background:var(--bg);width:100%;max-height:90%;border-radius:18px 18px 0 0;
-  border-top:1px solid var(--line);overflow-y:auto;-webkit-overflow-scrolling:touch;
-  padding:8px 16px calc(var(--safe-bot) + 22px)}
+/* A column you can read across, not a band stretched over a desktop monitor.
+   On a phone this is simply the full width. */
+#panelbody{background:var(--bg);width:100%;max-width:760px;margin:0 auto;max-height:90%;
+  border-radius:18px 18px 0 0;border-top:1px solid var(--line);
+  overflow-y:auto;-webkit-overflow-scrolling:touch;
+  padding:8px 20px calc(var(--safe-bot) + 22px)}
 .grab{width:40px;height:5px;background:var(--line);border-radius:3px;margin:8px auto 14px}
 #panelbody h2{margin:0 0 4px;font-size:22px;font-weight:680;line-height:1.2}
-.kv{display:flex;justify-content:space-between;gap:14px;padding:11px 0;border-bottom:1px solid var(--sunk);font-size:16px}
-.kv .k{color:var(--ink3)}
-.kv .v{font-weight:650;text-align:right}
+/* Label in a narrow column, the answer left-aligned right beside it, so the
+   eye pairs them without travelling the width of the screen. */
+.kv{display:flex;gap:16px;padding:11px 0;border-bottom:1px solid var(--sunk);font-size:16px}
+.kv .k{flex:0 0 40%;max-width:210px;color:var(--ink3)}
+.kv .v{flex:1;min-width:0;font-weight:650;text-align:left}
 .tag{display:inline-block;font-size:14px;font-weight:700;padding:4px 10px;border-radius:6px;
   background:var(--sunk);color:var(--ink2);margin-top:6px}
 .tag.occupied{background:#DAD6CE;color:#3B3833}
@@ -273,7 +278,7 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
      Export writes the whole thing back out as plain CSV and GeoJSON - the
      copy that outlives any account, any subscription, and any one person.
    ===================================================================== */
-const BUILD = 17;
+const BUILD = 18;
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
