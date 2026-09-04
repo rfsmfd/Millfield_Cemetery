@@ -4,6 +4,12 @@
 <meta charset="utf-8">
 <title>Millfield Cemetery</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<!-- Not listed in search engines, by the committee's decision (2026-09-03):
+     the congregation is to be asked before the burial names become findable
+     by anyone searching for them. The map itself is public - anybody with the
+     address can use it - it simply is not advertised. To make it searchable
+     later, delete this one line and the site becomes findable within days. -->
+<meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#E9DFC6">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -345,7 +351,7 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
      Export writes the whole thing back out as plain CSV and GeoJSON - the
      copy that outlives any account, any subscription, and any one person.
    ===================================================================== */
-const BUILD = 33;
+const BUILD = 34;
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
