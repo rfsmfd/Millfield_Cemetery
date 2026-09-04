@@ -1,9 +1,13 @@
-# Millfield Cemetery — map
+# Millfield Cemetery — map and record
 
-A phone-friendly map of Millfield Baptist Church cemetery, built from the cemetery
-geodatabase. Read-only: nothing in the app can alter the records.
+**https://rfsmfd.github.io/Millfield_Cemetery/**
 
-**Not yet published.** See "Before this goes public" below.
+A map of Millfield Baptist Church cemetery in Wakefield, Virginia, drawn from the church's own surveyed
+geodatabase. Anyone can use it to find a grave or see which plots are available. The Cemetery Committee signs in
+to record burials and sales, print a record of purchase, and keep the ledger.
+
+Published, but **deliberately not listed in search engines** — the congregation is to be asked before the burial
+names become findable by anyone searching for them. That is one `<meta name="robots">` line in `index.html`.
 
 ---
 
@@ -11,106 +15,88 @@ geodatabase. Read-only: nothing in the app can alter the records.
 
 | | |
 |---|---|
-| **565 plots** | shaded green *available* · amber *reserved* · grey *occupied* |
-| **113 burials** | name, birth, death, age, veteran status |
-| **107 Find a Grave links** | tap through to the memorial — photographs, obituary, family |
-| **56 family lots** | with owner and lot size |
-| **21 section letters** | A–U, shown once zoomed in |
+| **565 plots** | green *available* · amber *reserved* · blue *sold* · grey *occupied* |
+| **113 burials** | name, birth, death, age, veteran service |
+| **107 Find a Grave links** | tap through to the memorial |
+| **57 family lots** | owner and size, named on the map once you zoom in |
+| **69 plots over the property line** | outlined in broken red — they may not exist as drawn |
 
-Plus surname search, a filter for available plots, a veterans filter (9 recorded),
-and your own position on the map so you can stand in the cemetery and see what is
-around you.
+Plus surname and plot-number search, a filter for available plots, veterans, and your own position on the map.
 
----
+## The four states of a plot
 
-## Plot status — how it is worked out
+Following the committee's own rules:
 
-Following the rule as stated by the cemetery keeper:
+- **available** — in no family lot, and for sale to church members
+- **reserved** — bought and paid for, but the four corner markers are not yet set
+- **sold** — markers set, so the ground has passed permanently into the owner's name
+- **occupied** — a burial is recorded in it
 
-- A plot inside a **LOTS** polygon is **sold** (all 56 lots are sold)
-  - contains a burial → **occupied** (107)
-  - empty → **reserved** (131)
-- A plot in no lot → **available** (327)
+Reserved to sold is exactly what the 120-day marker deadline is for. The status is worked out, never stored twice,
+so the map cannot disagree with the marker record.
 
-Availability is to **church members**. Under the cemetery regulations, plots cannot
-be sold to non-members without Committee and Trustee approval, and every burial
-requires Committee approval. The map shows what exists; it is not a booking system.
+## Where the truth lives
 
----
+**The drawing** — plots, lots, boundary, corner posts — came from the ArcGIS geodatabase and does not repeat.
+`_tools/export_cemetery.py` writes it to `data/*.geojson`.
 
-## The data
+**The record** — who is buried where, what has sold, to whom, when — lives in Firestore, written from the app by
+the committee. That is the part that changes forever, and keeping it needs no GIS software.
 
-`data/*.geojson`, exported from
-`C:\GIS_Projects\MILLFIELD_CEMETERY_RECOVERED\MILLFIELD CEMETERY.gdb`
-by `_tools/export_cemetery.py`.
+**ArcGIS is the archive**, not the live record. Export from the app and import when you want a printed map or new
+survey work; nothing syncs automatically, so the app can never corrupt the geodatabase.
 
-### The coordinate-system trap — read this before re-exporting
+⚠ **Plot ids are the geodatabase's own OBJECTIDs.** `arcpy.Project` renumbers features from 1, and for a while the
+record was keyed to that renumbering — which pointed at nothing in the geodatabase and put one sale on the wrong
+ground. The export now stamps the real OBJECTID as `SRCOID` before anything is copied. Do not key anything to a
+projected copy's OID.
 
-The geodatabase holds layers in **two different coordinate systems**:
+## Public and private
 
-- `PLOTS1` — GCS_WGS_1972
-- everything else — NAD_1927_Polyconic (local grid, coordinates around 14,000)
+Public, because it is carved on a stone or plain to see: the name, dates, veteran service, plot number, whether a
+plot is spoken for, the owner's name, whether the markers and headstone are in place.
 
-They only line up under **one** datum transformation:
+Committee only, refused by the server to anyone else: addresses, email, telephone, price, date of purchase, who
+may be buried there, and which member recorded it. These live in `cemeteryPrivate`, which returns 403 to the public.
 
-```
-NAD_1927_To_WGS_1984_85      <- correct
-WGS_1972_To_WGS_1984_1       <- for PLOTS1
-```
+## Section letters — read before reinstating anything
 
-Every other transformation silently misplaces the layers relative to each other and
-produces wrong answers. It is not obvious, because each one *looks* plausible.
+A plot's full name is a section letter plus a number, "F20". It **cannot be derived from the map** — giving each
+plot the nearest of the 21 `BLOCK` label points produced 108 duplicated labels across 263 of the 565 plots, and
+passed its only available check while doing so. Chaining shared edges, banding the rotated grid and clustering by
+spacing all failed too; the information is not in the geodatabase.
 
-**The test that proves it:** there are 571 `LOTNUMBER` points and 565 plots, so nearly
-every point should fall inside a plot.
+**The committee types the letter** on the sale form, and it is stored with the sale. The map shows the survey's
+bare lot number and claims nothing more.
 
-| Transformation | Points inside a plot |
-|---|---|
-| **NAD_1927_To_WGS_1984_85** | **568 of 571** |
-| NAD_1927_To_WGS_1984_4 | 175 |
-| NAD_1927_To_WGS_1984_3 | 162 |
-| NAD_1927_To_WGS_1984_5 | 153 |
-| NAD_1927_To_WGS_1984_79_CONUS | 130 |
-| *(no transformation)* | 298 |
+## The property line
 
-After exporting, always confirm: **111 of 113 burials fall inside a family lot.**
-If that number drops, the transformation is wrong.
+The church has a survey of its property line. It has never had one tying the cemetery's plots to that line — the
+committee chose to prove each plot as it is sold rather than pay for a survey. So 69 plots are drawn at or past the
+line, are marked in red, and say so on their own sheet and on the record of purchase. A plot is confirmed when the
+purchaser sets the four corner markers.
 
-*(The 2 that fall outside are Louetta and James Leverson Ellis — genuinely
-unresolved ground, not an error.)*
+## The deadlines, watched automatically
 
----
+`_tools/marker-reminder.gs` runs in Google Apps Script every morning and emails the committee — and the purchaser
+or family — when either clock runs out:
 
-## Before this goes public
+- **120 days** from the letter for the purchaser's four granite corner markers
+- **180 days** from a burial for the family's headstone
 
-Publishing means every name, birth date and death date is visible to anyone with the
-link. Cemetery records are ordinarily public, and Find a Grave already carries 107 of
-these people — but that is **the Cemetery Committee's decision to make, not a
-technical one.**
+It reads both halves of the record through its own service account, whose credentials live in that project's Script
+Properties, never in the code.
 
-Three questions for the Committee:
+## Keeping it
 
-1. Should names and dates be public?
-2. Should the map show which plots are available?
-3. Who besides the present keeper holds a copy of the records?
-
----
+**Export the whole record** (committee panel) writes CSV and GeoJSON of everything. Excel reads one, any mapping
+program reads the other, and neither needs an account or a subscription. That file is what survives Google, this
+app, and any one person. Keep the newest with the church papers.
 
 ## Running it locally
 
-```bash
-npx http-server . -p 5185 -c-1
-```
+`Start Cemetery Map.bat` serves it on port 5185 and prints the address for a phone on the same wi-fi. Offline
+support needs `https`, so the published site is the one to use in the field.
 
-Then open `http://localhost:5185`. It needs an internet connection for the satellite
-imagery; everything else is local.
-
----
-
-## Re-exporting after changes in ArcGIS
-
-1. Make the edits in ArcGIS Pro and **save the edits** (Edit tab → Manage Edits →
-   Save — this is separate from Ctrl+S, which only saves the project)
-2. Close ArcGIS Pro so the geodatabase locks are released
-3. Run `_tools/export_cemetery.py`
-4. Check the console reports the expected split: **107 occupied, 131 reserved, 327 available**
+**Bump `BUILD` in both `index.html` and `sw.js` on every change — including when only `data/` changes.** The build
+number names the caches, and a stale copy will otherwise survive a refresh.
