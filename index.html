@@ -1173,6 +1173,19 @@ function init(){
   baseAerial.addTo(map);
   L.control.zoom({position:'bottomright'}).addTo(map);
 
+  /* The graves get a pane of their own, above the one every other outline
+     shares.
+
+     Leaflet paints vectors in the order they were added, and re-adding a layer
+     puts it back on top. So turning Family lots off and on again - an ordinary
+     thing to do - left the lot outlines sitting over the graves, and because
+     a lot has a fill, even a five-percent one, it swallowed the taps: 111 of
+     the 113 graves stopped answering, with nothing on screen to say why.
+     A pane fixes the order once, by z-index, and no amount of toggling can
+     shuffle it again. */
+  map.createPane('graves');
+  map.getPane('graves').style.zIndex = 450;   // over the outlines (400), under the labels (600)
+
   L.geoJSON(D.boundary, {style:{color:'#F4ECD9', weight:2, fill:false, dashArray:'6 5'}}).addTo(map);
 
   layerPlots = L.geoJSON(D.plots, {
@@ -1199,7 +1212,7 @@ function init(){
   layerLotNames = L.layerGroup();
 
   layerBurials = L.geoJSON(D.burials, {
-    pointToLayer:function(f,ll){ return L.circleMarker(ll,{radius:6, weight:2, color:'#F4ECD9',
+    pointToLayer:function(f,ll){ return L.circleMarker(ll,{pane:'graves', radius:6, weight:2, color:'#F4ECD9',
       fillColor: f.properties.vet ? '#8C2F26' : '#211B11', fillOpacity:1}); },
     onEachFeature:function(f,l){ l.on('click', function(e){ L.DomEvent.stop(e); showBurial(f.properties); }); }
   }).addTo(map);
@@ -1813,7 +1826,7 @@ function rebuildAppBurials(){
   appList = appBurials();
   layerAppBurials.clearLayers();
   appList.forEach(function(b){
-    L.circleMarker(b.ll, {radius:6, weight:2, color:'#F4ECD9',
+    L.circleMarker(b.ll, {pane:'graves', radius:6, weight:2, color:'#F4ECD9',
       fillColor: b.vet ? '#8C2F26' : '#211B11', fillOpacity:1})
       .on('click', function(e){ L.DomEvent.stop(e); showBurial(b); })
       .addTo(layerAppBurials);
