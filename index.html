@@ -216,8 +216,34 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
   font-size:16px;font-weight:680;text-align:center;box-shadow:0 4px 16px rgba(30,26,18,.3)}
 #updatebar.on{display:block}
 
+/* ---- the opening screen ----
+   Quiet on purpose. No spinner, no bounce: it is a cemetery. The churchyard
+   boundary draws itself once, slowly, and that IS the loading indicator. */
 #loading{position:fixed;inset:0;background:var(--bg);z-index:2000;display:flex;
-  align-items:center;justify-content:center;flex-direction:column;gap:14px;font-size:17px;color:var(--ink2)}
+  align-items:center;justify-content:center;padding:24px;
+  transition:opacity .5s ease}
+#loading.gone{opacity:0;pointer-events:none}
+.splash{text-align:center;max-width:340px;width:100%}
+.splash .ground{width:150px;height:150px;display:block;margin:0 auto 22px}
+.splash .fill{fill:var(--accent);opacity:.07}
+.splash .line{fill:none;stroke:var(--accent);stroke-width:1.4;stroke-linejoin:round;
+  stroke-dasharray:1;stroke-dashoffset:1;animation:trace 2.6s ease-out .15s forwards}
+.splash .cross{stroke:var(--accent);stroke-width:2.4;stroke-linecap:round;fill:none;
+  opacity:0;animation:show 1s ease-out 1.5s forwards}
+@keyframes trace{to{stroke-dashoffset:0}}
+@keyframes show{to{opacity:.75}}
+.splash .place{font-size:14px;font-weight:750;letter-spacing:.32em;text-transform:uppercase;
+  color:var(--accent);margin-bottom:6px}
+.splash h1{margin:0;font-size:25px;line-height:1.2;font-weight:600;letter-spacing:-.2px;
+  color:var(--ink);font-family:Georgia,"Iowan Old Style",serif}
+.splash .where{margin-top:7px;font-size:15px;color:var(--ink3)}
+.splash .rule{width:56px;height:1px;background:var(--line);margin:18px auto}
+.splash .since{font-size:14px;color:var(--ink3);letter-spacing:.02em}
+/* Somebody who has asked for less movement gets the drawing already finished. */
+@media (prefers-reduced-motion:reduce){
+  .splash .line{animation:none;stroke-dashoffset:0}
+  .splash .cross{animation:none;opacity:.75}
+}
 
 /* On a phone the sheet slides up over the map, which is right - there is no
    room for anything else. On a desktop that hides the very thing you are
@@ -241,7 +267,25 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
 </head>
 <body>
 
-<div id="loading"><div style="font-size:44px">&#9962;</div><div>Loading the cemetery&hellip;</div></div>
+<!-- The opening screen. The outline is the churchyard's own boundary, taken from
+     the church's survey and drawn line by line while the map loads - so the first
+     thing anyone sees is the actual shape of the ground. -->
+<div id="loading">
+  <div class="splash">
+    <svg class="ground" viewBox="-6 -6 92 92" aria-hidden="true">
+      <polygon class="fill" points="0,26.8 25.7,14.7 22.9,10 44.4,0 80,57.3 76.1,57.4 63.3,64.2 60.4,62.9
+        55.5,70.3 52.1,71.7 45.7,76.2 41.6,75.6 37.1,78.4 30.6,78.9 28.7,79.4 20.7,79.5 19.6,73.7 18.8,69.8"/>
+      <polygon class="line" pathLength="1" points="0,26.8 25.7,14.7 22.9,10 44.4,0 80,57.3 76.1,57.4 63.3,64.2
+        60.4,62.9 55.5,70.3 52.1,71.7 45.7,76.2 41.6,75.6 37.1,78.4 30.6,78.9 28.7,79.4 20.7,79.5 19.6,73.7 18.8,69.8"/>
+      <path class="cross" d="M40,34 V50 M33.5,39.5 H46.5"/>
+    </svg>
+    <div class="place">Millfield</div>
+    <h1>Baptist Church Cemetery</h1>
+    <div class="where">Wakefield, Virginia</div>
+    <div class="rule"></div>
+    <div class="since">Burials recorded from 1839</div>
+  </div>
+</div>
 
 <div id="shell">
   <div id="topbar">
@@ -351,7 +395,8 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
      Export writes the whole thing back out as plain CSV and GeoJSON - the
      copy that outlives any account, any subscription, and any one person.
    ===================================================================== */
-const BUILD = 34;
+const BUILD = 35;
+const startedAt = Date.now();   // so the opening screen is never a flash
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -1006,7 +1051,15 @@ async function load(){
   loadStored();
   cloudInit();
   init();
-  $('#loading').style.display = 'none';
+  /* Let the outline finish drawing before it goes. On a fast connection the
+     data is ready in a blink, and a screen that flashes past is worse than no
+     screen at all - so hold it briefly, then fade. */
+  const shown = Date.now() - startedAt;
+  setTimeout(function(){
+    const el = $('#loading');
+    el.classList.add('gone');
+    setTimeout(function(){ el.style.display = 'none'; }, 600);
+  }, Math.max(0, 2200 - shown));
 }
 
 function init(){
