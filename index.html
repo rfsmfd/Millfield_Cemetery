@@ -14,12 +14,26 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Millfield Cemetery">
-<link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%22Millfield%20Cemetery%22%2C%22short_name%22%3A%22Cemetery%22%2C%22start_url%22%3A%22.%22%2C%22scope%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23E9DFC6%22%2C%22theme_color%22%3A%22%23E9DFC6%22%7D">
-<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='512' height='512' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='96' fill='%23E9DFC6'/%3E%3Cpath d='M256 90 L256 430 M160 190 L352 190' stroke='%2337543C' stroke-width='46' stroke-linecap='round'/%3E%3C/svg%3E">
+<!-- The home-screen button. These MUST be PNG files at real URLs, and both
+     halves of that matter:
+       - iOS ignores an SVG apple-touch-icon without saying so and puts a
+         screenshot of the page on the home screen instead;
+       - a manifest served from a data: URI has no base address, so relative
+         icon paths inside it cannot resolve - hence a real file.
+     Drawn by _tools/make-icons.js from the same cross and the same dark ground
+     as the opening screen, so the button, the launch image and the splash are
+     one thing. -->
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png">
+<link rel="apple-touch-icon" sizes="167x167" href="icons/icon-167.png">
+<link rel="apple-touch-icon" sizes="152x152" href="icons/icon-152.png">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16.png">
 <!-- iOS launch images. Without these the home-screen app opens on a white
      screen; iOS wants an exact PNG per device size or it ignores them all.
-     Generated from the same churchyard outline by _tools/make-launch-images.js,
-     positioned so the app appears to open on the outline and then draw it in. -->
+     They are nothing but the opening screen's own ground colour, which is
+     exactly what it looks like the instant it appears - the photograph fades
+     up out of that - so the handover is invisible. _tools/make-launch-images.js -->
 <link rel="apple-touch-startup-image" href="launch/launch-1320x2868.png" media="(device-width:440px) and (device-height:956px) and (-webkit-device-pixel-ratio:3) and (orientation:portrait)">
 <link rel="apple-touch-startup-image" href="launch/launch-1290x2796.png" media="(device-width:430px) and (device-height:932px) and (-webkit-device-pixel-ratio:3) and (orientation:portrait)">
 <link rel="apple-touch-startup-image" href="launch/launch-1206x2622.png" media="(device-width:402px) and (device-height:874px) and (-webkit-device-pixel-ratio:3) and (orientation:portrait)">
@@ -483,7 +497,7 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
      Export writes the whole thing back out as plain CSV and GeoJSON - the
      copy that outlives any account, any subscription, and any one person.
    ===================================================================== */
-const BUILD = 39;
+const BUILD = 40;
 const startedAt = Date.now();   // so the opening screen is never a flash
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
