@@ -155,6 +155,11 @@ body.isadmin .adminonly{display:flex !important}
 .panelbox .sep{border-top:1px solid var(--line);margin:8px 0 4px;padding-top:6px;
   font-size:11px;font-weight:750;letter-spacing:.6px;text-transform:uppercase;color:var(--admin)}
 
+/* Leaflet parks its control corners at z-index 1000, which is above the sheet
+   below - so the + and - buttons floated on top of every panel, including the
+   middle of a sentence. Brought under the sheet (900) and the menu (850), and
+   left above the legend and the caveat (600). */
+.leaflet-top,.leaflet-bottom{z-index:700}
 #panel{position:fixed;inset:0;z-index:900;background:rgba(30,26,18,.6);display:none;align-items:flex-end}
 #panel.on{display:flex}
 /* A column you can read across, not a band stretched over a desktop monitor.
@@ -498,7 +503,7 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
      Export writes the whole thing back out as plain CSV and GeoJSON - the
      copy that outlives any account, any subscription, and any one person.
    ===================================================================== */
-const BUILD = 44;
+const BUILD = 45;
 const startedAt = Date.now();   // so the opening screen is never a flash
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -2484,7 +2489,8 @@ function buildMenu(){
         menuItem('&#9881;', 'Committee tools &mdash; ledger, letters', 'adminPanel()') +
         menuItem('&#128275;', 'Sign out', 'signOut()')
       : menuItem('&#128274;', 'Committee sign-in', 'adminPanel()')) +
-    '<div class="sep">About</div>' +
+    '<div class="sep">Help</div>' +
+    menuItem('&#10067;', 'How to use this map', 'showHelp()') +
     menuItem('&#8505;', 'About this map', 'showAbout()');
 }
 function toggleMenu(){
@@ -2525,6 +2531,163 @@ function showSurveyNote(){
       'work, and the committee has chosen to prove each plot as it is sold rather than survey the whole ' +
       'cemetery.</p>' +
     '<button class="btn sec" onclick="closePanel()">Close</button>');
+}
+
+/* =====================================================================
+   HOW TO USE THIS MAP
+
+   One source, two outputs: the panel on screen and the sheet that comes
+   out of the printer are built from the same sections below, so the
+   manual cannot quietly start saying something the app no longer does.
+
+   Every button named here is named exactly as it appears on screen, and
+   the colour squares are drawn from COLOR itself - change a status
+   colour and this changes with it.
+
+   Written for somebody who opens the app twice a year. Short sentences,
+   no jargon, and it says which screen a thing is on.
+   ===================================================================== */
+function swatch(k){
+  return '<span style="display:inline-block;width:13px;height:13px;border-radius:3px;' +
+         'vertical-align:-2px;margin-right:7px;background:' + COLOR[k] + '"></span>';
+}
+function guideSections(){
+  const addr = 'rfsmfd.github.io/Millfield_Cemetery';
+  const S = [];
+
+  S.push({h:'Finding a grave', p:[
+    'Tap <b>MENU</b> at the top of the screen, then <b>Find a name or a plot</b>. Type any part of a ' +
+    'name &mdash; or a plot number like M20. Tap a result and the map goes to it.',
+    'You can also tap any dark dot on the map to see who is buried there.']});
+
+  S.push({h:'What the colours mean', p:[
+    ['available','reserved','sold','occupied'].map(function(k){
+      return swatch(k) + '<b>' + LABEL[k] + '</b>';
+    }).join('&nbsp;&nbsp; '),
+    '<b>Available</b> means nobody has spoken for it yet. <b>Reserved</b> and <b>Sold</b> both mean it ' +
+    'belongs to somebody; <b>Occupied</b> means somebody is buried there.']});
+
+  S.push({h:'The rest of the map', p:[
+    'A <b>dark dot</b> is a grave. A <b>dark red dot</b> is a veteran.',
+    'A <b>pale outline</b> with a family name written across it is a family lot.',
+    'The <b>large letters</b> are the sections. <b>Plot numbers</b> appear once you zoom in far enough.',
+    'Tap <b>MENU</b> &rarr; <b>Choose what to show</b> to turn any of these off.']});
+
+  S.push({h:'When two graves sit on top of each other', p:[
+    'A few family members are buried less than a foot apart. Zoomed out, their dots overlap and only the ' +
+    'top one answers a tap. <b>Zoom in and they separate.</b> If a name you expect will not open, that is ' +
+    'almost always why.']});
+
+  S.push({h:'Standing in the cemetery', p:[
+    'Tap <b>MENU</b> &rarr; <b>Show me where I am</b> and a blue dot shows your position.',
+    'A phone is accurate to a few yards, so use it to find the right row &mdash; not to pick out one ' +
+    'grave from its neighbour.']});
+
+  S.push({h:'Using it with no signal', p:[
+    'Open the map once somewhere with internet and it keeps its own copy on the phone. After that it ' +
+    'opens and works at the cemetery with no signal at all.',
+    'Two things to know. The satellite picture is only kept for the parts you have actually looked at, ' +
+    'so pan around the cemetery while you still have signal. And the <b>Find a Grave</b> links go out to ' +
+    'another website, so those need internet &mdash; everything else does not.']});
+
+  S.push({h:'Putting it on your phone', p:[
+    'Open <b>' + addr + '</b> in <b>Safari</b> on an iPhone, tap the Share button, then ' +
+    '<b>Add to Home Screen</b>. On Android use Chrome and <b>Install app</b>.',
+    'It then opens like any other app, from its own button.']});
+
+  S.push({h:'About the plot positions', p:[SURVEY_CAVEAT]});
+
+  /* ---- the committee half ---- */
+  S.push({admin:true, h:'Signing in', p:[
+    'Tap <b>MENU</b> &rarr; <b>Committee sign-in</b>. The first time, use ' +
+    '<b>First time &mdash; make my sign-in</b> to set your own password.',
+    'Once signed in, <b>MENU</b> &rarr; <b>Committee tools &mdash; ledger, letters</b> is where the ' +
+    'record-keeping lives.']});
+
+  S.push({admin:true, h:'Recording a burial', p:[
+    'Tap the plot on the map, then <b>Record a burial here</b>. Fill in the name as it appears on the ' +
+    'stone. Saving marks the plot occupied.',
+    'To correct one, tap the grave and choose <b>Correct this record</b>.']});
+
+  S.push({admin:true, h:'Recording a sale', p:[
+    'Tap any plot in the sale, then <b>Record a sale &mdash; pick the plots</b>, and tap every plot the ' +
+    'family is buying. One sale can cover several plots.',
+    '<b>Type the plot number yourself</b> on the form &mdash; the letter and the number, as the committee ' +
+    'writes it. The map cannot work the section letter out and must not guess.',
+    'To change a sale later, open any plot in it and choose <b>Change this sale</b>. That keeps it as one ' +
+    'sale rather than splitting it in two.']});
+
+  S.push({admin:true, h:'The record of purchase', p:[
+    'After a sale is saved, the plot has a <b>Print the record of purchase</b> button. That prints the ' +
+    'letter for the purchaser, with a plan of exactly which plots they bought.']});
+
+  S.push({admin:true, h:'The two deadlines', p:[
+    '<b>' + POST_DAYS + ' days</b> from the letter, the purchaser sets the corner markers. Mark it done ' +
+    'with <b>Record the corner markers as set</b>.',
+    '<b>' + STONE_DAYS + ' days</b> from a burial, the family sets the headstone. Mark it done with ' +
+    '<b>Record the headstone as set</b>.',
+    'Both are watched automatically and a reminder is emailed each morning when one is due. ' +
+    '<b>Send the purchaser a reminder</b> and <b>Remind the family</b> write the message for you.']});
+
+  S.push({admin:true, h:'The ledger', p:[
+    'In Committee tools, <b>The ledger &mdash; everything sold and reserved</b> lists every sale and ' +
+    'burial on one page. <b>Print this</b> for the meeting, or <b>Save it as a spreadsheet</b> for Excel.']});
+
+  S.push({admin:true, h:'What stays private', p:[
+    'Anyone can see names, dates, veteran service, plot numbers, whether a plot is spoken for, and the ' +
+    'owner&rsquo;s name &mdash; the same things a stone shows.',
+    'Addresses, telephone numbers, email, price, date of purchase and who recorded it are visible only ' +
+    'after signing in. Nobody else can reach them, even if they know where to look.']});
+
+  S.push({admin:true, h:'Keeping the record safe', p:[
+    'In Committee tools, <b>Export the whole record</b> writes everything out as plain files that Excel ' +
+    'and any mapping program can open, with no account and no subscription.',
+    'Do this now and then and keep the newest copy with the church papers. That copy outlives any ' +
+    'account, any website and any one person.']});
+
+  return S.filter(function(s){ return !s.admin || isAdmin; });
+}
+
+function showHelp(){
+  const S = guideSections();
+  openPanel(
+    '<h2>How to use this map</h2>' +
+    S.map(function(s){
+      return '<div class="sec-h">' + s.h + '</div>' +
+        s.p.map(function(t,i){
+          return '<p class="note"' + (i ? '' : ' style="margin-top:0"') + '>' + t + '</p>';
+        }).join('');
+    }).join('') +
+    '<button class="btn sec" onclick="printGuide()">&#128424; Print this as a handout</button>' +
+    '<button class="btn sec" onclick="closePanel()">Close</button>');
+}
+
+/* The same words, on paper. Opens its own window the way the record of
+   purchase does, so printing it cannot drag the map along with it. */
+function printGuide(){
+  const w = window.open('', '_blank');
+  if(!w){ toast('Allow pop-ups so the handout can open'); return; }
+  const S = guideSections();
+  w.document.write(
+    '<!doctype html><html><head><meta charset="utf-8">' +
+    '<title>Millfield Cemetery - how to use the map</title><style>' +
+    'body{font:12pt/1.5 Georgia,serif;color:#211B11;max-width:44em;margin:2.5em auto;padding:0 1.5em}' +
+    'h1{font-size:19pt;margin:0 0 .1em}' +
+    '.sub{font-size:10.5pt;color:#5A4D34;margin:0 0 1.6em}' +
+    'h2{font-size:12.5pt;margin:1.5em 0 .35em;border-bottom:1px solid #C0B08C;padding-bottom:.2em}' +
+    'p{margin:.45em 0}' +
+    '.foot{margin-top:2.5em;font-size:9.5pt;color:#5A4D34;border-top:1px solid #C0B08C;padding-top:.7em}' +
+    '@media print{body{margin:0;max-width:none} h2{break-after:avoid} p{orphans:3;widows:3}}' +
+    '</style></head><body>' +
+    '<h1>Millfield Church Cemetery</h1>' +
+    '<p class="sub">How to use the map &middot; rfsmfd.github.io/Millfield_Cemetery</p>' +
+    S.map(function(s){
+      return '<h2>' + s.h + '</h2>' + s.p.map(function(t){ return '<p>' + t + '</p>'; }).join('');
+    }).join('') +
+    '<p class="foot">' + CHURCH.name + ' &middot; ' + CHURCH.addr + ', ' + CHURCH.town +
+      ' &middot; ' + CHURCH.tel + '<br>Version ' + BUILD + '</p>' +
+    '</body></html>');
+  w.document.close();
 }
 
 function showAbout(){
