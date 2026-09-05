@@ -25,3 +25,6 @@ CLAUDE.md
 index.html.bak
 Start Cemetery Map.bat
 *.log
+
+# Local dev helper for the in-app browser preview; not needed to serve the map
+.claude/
