@@ -20,9 +20,10 @@
          screenshot of the page on the home screen instead;
        - a manifest served from a data: URI has no base address, so relative
          icon paths inside it cannot resolve - hence a real file.
-     Drawn by _tools/make-icons.js from the same cross and the same dark ground
-     as the opening screen, so the button, the launch image and the splash are
-     one thing. -->
+     Drawn by _tools/make-icons.js in the map's own palette - a green cross on
+     parchment, --accent on --bg. The opening screen is dark and the button is
+     not, deliberately: the button sits on a home screen among other apps,
+     where it should look like the map it opens. -->
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png">
 <link rel="apple-touch-icon" sizes="167x167" href="icons/icon-167.png">
@@ -497,7 +498,7 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
      Export writes the whole thing back out as plain CSV and GeoJSON - the
      copy that outlives any account, any subscription, and any one person.
    ===================================================================== */
-const BUILD = 40;
+const BUILD = 41;
 const startedAt = Date.now();   // so the opening screen is never a flash
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
