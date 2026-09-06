@@ -503,7 +503,7 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
      Export writes the whole thing back out as plain CSV and GeoJSON - the
      copy that outlives any account, any subscription, and any one person.
    ===================================================================== */
-const BUILD = 46;
+const BUILD = 47;
 const startedAt = Date.now();   // so the opening screen is never a flash
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -895,6 +895,10 @@ const MEMB = 'cemeteryCommittee';    // who is allowed to write, one document pe
 let db = null, auth = null;
 let members = [], unsubMembers = null, unsubPrivate = null;
 let pubRec = {}, privRec = {};
+/* Notes that belong to a LOT rather than a plot. Held apart from privRec on
+   purpose: everything in privRec is merged into the plot record, and a lot
+   sitting in there would be counted as a plot recorded through the app. */
+let lotNotes = {};
 
 /* ---------------------------------------------------------------------
    WHAT IS PUBLIC AND WHAT IS NOT
@@ -979,17 +983,21 @@ function cloudInit(){
     auth.onAuthStateChanged(function(u){
       cloud.user = u;
       if(unsubMembers){ unsubMembers(); unsubMembers = null; members = []; }
-      if(unsubPrivate){ unsubPrivate(); unsubPrivate = null; privRec = {}; rebuildCloud(); }
+      if(unsubPrivate){ unsubPrivate(); unsubPrivate = null; privRec = {}; lotNotes = {}; rebuildCloud(); }
       if(u){
         adminOn();
         /* the details half - only a signed-in member can read this at all */
         unsubPrivate = db.collection(PRIV).onSnapshot(function(snap){
-          privRec = {};
-          snap.forEach(function(doc){ privRec[doc.id] = doc.data(); });
+          privRec = {}; lotNotes = {};
+          snap.forEach(function(doc){
+            if(doc.id.indexOf('lot-') === 0) lotNotes[doc.id.slice(4)] = doc.data();
+            else privRec[doc.id] = doc.data();
+          });
           rebuildCloud();
           tidyPrivate();
           repairMisKeyedSale();
-        }, function(){ privRec = {}; rebuildCloud(); });
+          importLotNotes();
+        }, function(){ privRec = {}; lotNotes = {}; rebuildCloud(); });
         /* the committee roll. Only a member may change it, and a member
            may add the next one - so the committee can hand itself on
            without anybody touching the database or calling for help. */
@@ -1063,6 +1071,43 @@ function cloudWrite(id, patch){
    and it deletes them afterwards, so it can never run twice or touch
    anything else. Safe to leave in place; safe to delete once done.
    ===================================================================== */
+/* ---- one-time: the survey's lot notes, moved to the committee's side ----
+   LOTS.NOTES used to be exported into data/lots.geojson, which GitHub Pages
+   serves to anybody. One lot's note was a purchase price, so the field is no
+   longer exported at all - see _tools/export_cemetery.py. The committee still
+   needs what it said, and the app is now the administrative record, so the
+   text is carried across here once into the private half, where only a
+   signed-in member can read it.
+
+   Keyed by LOT id, and written to a lot- document rather than a plot one. That
+   is deliberate. Giving these plots a buyer would flip eight of them from Sold
+   to Reserved and put a sale in the ledger that nobody actually made; this
+   records what the survey said and asserts nothing else. */
+const LOT_NOTES = {
+  '86': {
+    lotId: 86,
+    owner: 'CHRIS & MELISSA CORNWELL',
+    plots: 'M20, M21, M22, M23, M24, M25, M26, M27',
+    notes: 'PAID $1200, $350 PER PLOT PER 2011 POLICY PRICE',
+    source: 'Survey lot note. Moved out of the public data file 2026-09-06.'
+  }
+};
+let importingLotNotes = false;
+function importLotNotes(){
+  if(importingLotNotes || !cloud.user || !db) return;
+  const todo = Object.keys(LOT_NOTES).filter(function(k){ return !lotNotes[k]; });
+  if(!todo.length) return;
+  importingLotNotes = true;
+  Promise.all(todo.map(function(k){
+    return db.collection(PRIV).doc('lot-' + k).set(LOT_NOTES[k], {merge:true});
+  })).then(function(){
+    toast('Saved ' + todo.length + ' lot note' + (todo.length === 1 ? '' : 's') +
+          ' to the committee record', 4000);
+  }).catch(function(e){
+    toast('Could not save the lot notes: ' + (e.code || e.message), 5000);
+  }).then(function(){ importingLotNotes = false; });
+}
+
 const ID_REPAIR = {'492':'729', '493':'730'};
 const ID_REPAIR_SALE = 'sale-mtkvi2f5';
 let repairing = false;
@@ -1524,10 +1569,15 @@ function showLot(p){
     '<h2>' + esc(p.owner || 'Family lot') + '</h2>' +
     '<span class="tag reserved">Family lot</span>' +
     (isAdmin
-      ? '<div style="margin-top:14px">' +
-          (p.size  ? '<div class="kv"><span class="k">Size</span><span class="v">' + esc(p.size) + '</span></div>' : '') +
-          (p.plots ? '<div class="kv"><span class="k">Plots</span><span class="v">' + esc(p.plots) + '</span></div>' : '') +
-        '</div>'
+      ? (function(){
+          const n = (p.id != null && lotNotes[String(p.id)]) || null;
+          return '<div style="margin-top:14px">' +
+            (p.size  ? '<div class="kv"><span class="k">Size</span><span class="v">' + esc(p.size) + '</span></div>' : '') +
+            (p.plots ? '<div class="kv"><span class="k">Plots</span><span class="v">' + esc(p.plots) + '</span></div>' : '') +
+            (n && n.notes ? '<div class="kv"><span class="k">Notes</span><span class="v">' + esc(n.notes) + '</span></div>' : '') +
+          '</div>' +
+          (n && n.source ? '<p class="note">' + esc(n.source) + '</p>' : '');
+        })()
       : '') +
     '<button class="btn sec" onclick="closePanel()">Close</button>');
 }
