@@ -10,7 +10,7 @@
    Bump BUILD to match index.html when you ship. */
 // Bump on EVERY change - the number names the caches, so a stale build and a
 // stale data/*.geojson both survive a refresh until it changes.
-const BUILD = 47;
+const BUILD = 48;
 const APP   = 'mc-app-v' + BUILD;
 const DATA  = 'mc-data-v' + BUILD;
 const LIB   = 'mc-lib-v1';
@@ -40,7 +40,27 @@ self.addEventListener('activate', e => {
             .map(k => caches.delete(k))
       ))
       .then(() => self.clients.claim())
+      .then(() => announce())
   );
+});
+
+/* Tell any page that is open that a newer build has arrived.
+   The page has its own check, but it hangs off pageshow, focus and
+   visibilitychange, and iOS resumes a home-screen app without reliably firing
+   any of them - Buddy sat two builds behind with no banner on 2026-09-05.
+   This runs when a new worker activates, which the browser does on its own
+   schedule, not the page's. */
+function announce() {
+  return self.clients.matchAll({ includeUncontrolled: true, type: 'window' })
+    .then(cs => cs.forEach(c => c.postMessage({ type: 'mc-build', build: BUILD })))
+    .catch(() => {});
+}
+
+/* And answer a page that asks outright, so it never has to parse this file. */
+self.addEventListener('message', e => {
+  if (e.data && e.data.type === 'mc-which-build' && e.source) {
+    e.source.postMessage({ type: 'mc-build', build: BUILD });
+  }
 });
 
 self.addEventListener('fetch', e => {

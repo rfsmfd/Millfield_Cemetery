@@ -251,8 +251,12 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
 #toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
 /* There is no pull-to-refresh here - the map takes the swipe - so the app has
    to say so itself when a newer build is waiting. */
+/* Its `top` is set in JS from the title bar's real height, the way the menu is
+   positioned. At top:0 it covered "Millfield Cemetery" and read as the header
+   rather than as a thing to tap. No safe-area padding for the same reason - it
+   is no longer against the notch. */
 #updatebar{position:fixed;left:0;right:0;top:0;z-index:1500;display:none;
-  padding:calc(var(--safe-top) + 12px) 16px 12px;background:var(--admin);color:#FBF3E7;
+  padding:13px 16px;background:var(--admin);color:#FBF3E7;
   font-size:16px;font-weight:680;text-align:center;box-shadow:0 4px 16px rgba(30,26,18,.3)}
 #updatebar.on{display:block}
 
@@ -503,7 +507,10 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
      Export writes the whole thing back out as plain CSV and GeoJSON - the
      copy that outlives any account, any subscription, and any one person.
    ===================================================================== */
-const BUILD = 47;
+const BUILD = 48;
+/* Shown next to the version at the foot of About, so a number on a phone can
+   be checked against a date somebody actually remembers. Bump it with BUILD. */
+const BUILD_DATE = '2026-09-06';
 const startedAt = Date.now();   // so the opening screen is never a flash
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -2767,6 +2774,27 @@ function printGuide(){
   w.document.close();
 }
 
+function agoWords(ms){
+  const s = Math.round(ms / 1000);
+  if(s < 90) return 'a moment ago';
+  const m = Math.round(s / 60);
+  if(m < 90) return m + ' minute' + (m === 1 ? '' : 's') + ' ago';
+  const h = Math.round(m / 60);
+  if(h < 36) return h + ' hour' + (h === 1 ? '' : 's') + ' ago';
+  const d = Math.round(h / 24);
+  return d + ' day' + (d === 1 ? '' : 's') + ' ago';
+}
+function lastCheckLine(){
+  if(!lastCheck.at) return 'It has not managed to look for a newer version yet.';
+  const when = agoWords(Date.now() - lastCheck.at);
+  if(!lastCheck.ok)
+    return 'Tried to look for a newer version ' + when + ' and could not ask &mdash; ' +
+           esc(lastCheck.err || 'no reason given') + '.';
+  if(lastCheck.seen > BUILD)
+    return 'Version ' + lastCheck.seen + ' is waiting &mdash; tap the bar at the top, or the button below.';
+  return 'Looked for a newer version ' + when + '; this is the newest there is.';
+}
+
 function showAbout(){
   openPanel(
     '<h2>Millfield Church Cemetery</h2>' +
@@ -2787,8 +2815,14 @@ function showAbout(){
       'the next one. <b>Export the whole record</b> writes it all out as plain files that Excel and any mapping ' +
       'program can read, with no account and no subscription &mdash; keep the newest one with the church papers.</p>' +
     '<p class="note">Millfield Baptist Church Cemetery Committee &middot; ' + CHURCH.tel + '</p>' +
-    '<p class="note" style="font-size:14px">Version ' + BUILD + ' &middot; ' +
-      (navigator.onLine ? 'online' : 'no signal') + '</p>' +
+    /* The version, the date it went out, and - the part that matters when
+       something has gone wrong - whether this copy has actually managed to ask
+       the server about a newer one, and what it heard back. A check that fails
+       silently looks exactly like a check that found nothing. */
+    '<div class="sec-h">This copy</div>' +
+    '<p class="note" style="margin-top:0">Version <b>' + BUILD + '</b> &middot; ' +
+      esc(fmtDate(BUILD_DATE)) + ' &middot; ' + (navigator.onLine ? 'online' : 'no signal') + '<br>' +
+      lastCheckLine() + '</p>' +
     '<button class="btn sec" onclick="location.reload()">&#8635; Check for a newer version</button>' +
     '<button class="btn sec" onclick="closePanel()">Close</button>');
 }
@@ -3054,24 +3088,72 @@ if('serviceWorker' in navigator && location.protocol !== 'file:'){
    opening, whenever it is brought back to the front, and every half hour it
    is left running - by reading the build number off the server and comparing
    it with its own. Costs a couple of hundred bytes. */
-function checkForUpdate(){
-  if(!navigator.onLine) return;
+/* One place raises the banner, whoever noticed. It is positioned under the
+   title bar rather than over it - at the very top it hid the app's own name
+   and read as part of the header instead of as something to tap. */
+function showUpdateBar(build){
+  const b = $('#updatebar');
+  if(!b) return;
+  const tb = $('#topbar');
+  if(tb) b.style.top = tb.getBoundingClientRect().bottom + 'px';
+  if(build) b.dataset.build = build;
+  b.classList.add('on');
+}
+
+/* The outcome of the last look, kept so About can show it. A check that
+   silently fails looks exactly like a check that found nothing, which is how
+   Buddy came to sit two builds behind on 2026-09-05 with no banner and no way
+   to tell why. Written through to this device so it survives a launch. */
+let lastCheck = {at:0, ok:false, seen:null, err:''};
+try{ lastCheck = JSON.parse(localStorage.getItem('millfield_lastcheck')) || lastCheck; }catch(e){}
+function noteCheck(o){
+  lastCheck = o;
+  try{ localStorage.setItem('millfield_lastcheck', JSON.stringify(o)); }catch(e){}
+}
+
+function checkForUpdate(why){
+  if(!navigator.onLine){ noteCheck({at:Date.now(), ok:false, seen:null, err:'no signal', why:why||''}); return; }
   fetch('sw.js?t=' + Date.now(), {cache:'no-store'})
-    .then(function(r){ return r.ok ? r.text() : ''; })
+    .then(function(r){ if(!r.ok) throw new Error('server said ' + r.status); return r.text(); })
     .then(function(t){
       const m = /const BUILD = (\d+)/.exec(t);
-      if(m && +m[1] > BUILD) $('#updatebar').classList.add('on');
+      if(!m) throw new Error('no build number in sw.js');
+      noteCheck({at:Date.now(), ok:true, seen:+m[1], err:'', why:why||''});
+      if(+m[1] > BUILD) showUpdateBar(+m[1]);
     })
-    .catch(function(){});
+    .catch(function(e){
+      noteCheck({at:Date.now(), ok:false, seen:null, err:e.message || 'could not ask', why:why||''});
+    });
 }
-document.addEventListener('visibilitychange', function(){ if(!document.hidden) checkForUpdate(); });
+
+document.addEventListener('visibilitychange', function(){ if(!document.hidden) checkForUpdate('came back'); });
 /* pageshow fires when iOS brings a suspended app back without reloading it,
    which is the usual way a home-screen app is reopened - visibilitychange
    alone can miss it. */
-window.addEventListener('pageshow', function(){ setTimeout(checkForUpdate, 800); });
-window.addEventListener('focus', checkForUpdate);
-setTimeout(checkForUpdate, 1500);
-setInterval(checkForUpdate, 30 * 60 * 1000);
+window.addEventListener('pageshow', function(){ setTimeout(function(){ checkForUpdate('reopened'); }, 800); });
+window.addEventListener('focus', function(){ checkForUpdate('focus'); });
+setTimeout(function(){ checkForUpdate('opened'); }, 1500);
+setInterval(function(){ checkForUpdate('half-hourly'); }, 30 * 60 * 1000);
+
+/* The net that does not depend on the page noticing anything. The worker
+   speaks up when a newer one activates, and the browser updates workers on its
+   own schedule rather than on pageshow or focus - which is the whole point,
+   because those are the ones iOS does not reliably fire. */
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.addEventListener('message', function(e){
+    if(e.data && e.data.type === 'mc-build'){
+      noteCheck({at:Date.now(), ok:true, seen:+e.data.build, err:'', why:'the worker said so'});
+      if(+e.data.build > BUILD) showUpdateBar(+e.data.build);
+    }
+  });
+  navigator.serviceWorker.addEventListener('controllerchange', function(){ checkForUpdate('new worker'); });
+  /* and ask outright once the worker is ready, in case it activated before
+     this page was listening */
+  navigator.serviceWorker.ready.then(function(reg){
+    if(reg.active) reg.active.postMessage({type:'mc-which-build'});
+    if(reg.update) reg.update().catch(function(){});
+  }).catch(function(){});
+}
 
 load().catch(function(e){
   $('#loading').innerHTML = '<div style="padding:24px;text-align:center">Could not load the cemetery data.<br><small>' +
