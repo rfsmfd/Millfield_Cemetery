@@ -503,7 +503,7 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
      Export writes the whole thing back out as plain CSV and GeoJSON - the
      copy that outlives any account, any subscription, and any one person.
    ===================================================================== */
-const BUILD = 45;
+const BUILD = 46;
 const startedAt = Date.now();   // so the opening screen is never a flash
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -923,7 +923,17 @@ const PRIVATE_FIELDS = [
   'price','saleNote','date','letterDate',            // what was paid, when, and why
   'people',                                          // a private arrangement about who may be buried
   'by','at','sectionBy','sectionAt',                 // which committee member recorded it
-  'postsBy','stoneBy'
+  'postsBy','stoneBy',
+  /* Added 2026-09-06. A grave shows the world what the stone shows - the name,
+     the dates, the age, veteran service. The committee's working record around
+     it does not: a free-text note, the date of the burial, whether the family
+     has set the headstone yet and when, and the date the corner markers went
+     in. Hiding these in the panel was not enough; they were being written to
+     the world-readable half and could be read straight out of the database.
+
+     postsIn is deliberately NOT here. It is what makes a plot read Sold rather
+     than Reserved (statusOf), and both of those are public by decision. */
+  'note','buried','stoneIn','stoneDate','postsDate'
 ];
 function splitRecord(patch){
   const pub = {}, priv = {};
@@ -1112,7 +1122,8 @@ function tidyPrivate(){
     return db.collection(PRIV).doc(j.id).set(priv, {merge:true})
       .then(function(){ return db.collection(COLL).doc(j.id).update(del); });
   })).then(function(){
-    toast('Moved the purchasers’ details out of public view', 4000);
+    toast('Moved ' + jobs.length + ' record' + (jobs.length === 1 ? '' : 's') +
+          ' out of public view', 4000);
   }).catch(function(e){
     toast('Could not tidy the old records: ' + (e.code||e.message), 5000);
   }).then(function(){ tidying = false; });
@@ -1377,14 +1388,21 @@ function showBurial(p){
     '<h2>' + esc(p.name || 'Unnamed') + '</h2>' +
     '<div style="color:var(--ink3);font-size:16px">' + esc(years(p.birth,p.death)) + '</div>' +
     (p.vet ? '<span class="tag" style="background:#E7D3D0;color:#7A2A22">Veteran</span>' : '') +
+    /* What anyone sees is what the stone says: the name, the dates, the age,
+       veteran service, and the plot it is in. The date of burial, the note,
+       the headstone clock, the family to call and who recorded it are the
+       committee's working record, not the stone's - they need a sign-in
+       (Buddy, 2026-09-06). */
     '<div style="margin-top:14px">' +
       rows.map(r => '<div class="kv"><span class="k">' + r[0] + '</span><span class="v">' + esc(r[1]) + '</span></div>').join('') +
-      (p.note ? '<div class="kv"><span class="k">Note</span><span class="v">' + esc(p.note) + '</span></div>' : '') +
       (p.plot ? '<div class="kv"><span class="k">Plot</span><span class="v">' + esc(p.plot) + '</span></div>' : '') +
-      (p.buried ? '<div class="kv"><span class="k">Buried</span><span class="v">' + esc(fmtDate(p.buried)) + '</span></div>' : '') +
-      stoneLine(p) +
-      (p.kin  ? '<div class="kv"><span class="k">Family contact</span><span class="v">' + esc(p.kin) + '</span></div>' : '') +
-      (p.by   ? '<div class="kv"><span class="k">Recorded by</span><span class="v">' + esc(p.by) + '</span></div>' : '') +
+      (isAdmin
+        ? (p.note ? '<div class="kv"><span class="k">Note</span><span class="v">' + esc(p.note) + '</span></div>' : '') +
+          (p.buried ? '<div class="kv"><span class="k">Buried</span><span class="v">' + esc(fmtDate(p.buried)) + '</span></div>' : '') +
+          stoneLine(p) +
+          (p.kin  ? '<div class="kv"><span class="k">Family contact</span><span class="v">' + esc(p.kin) + '</span></div>' : '') +
+          (p.by   ? '<div class="kv"><span class="k">Recorded by</span><span class="v">' + esc(p.by) + '</span></div>' : '')
+        : '') +
     '</div>' +
     (p.link ? '<a class="btn" href="' + esc(p.link) + '" target="_blank" rel="noopener">&#128214; Find a Grave memorial</a>' : '') +
     /* A burial recorded through the app can be corrected from here as well as
@@ -1425,7 +1443,8 @@ function showPlot(id){
       : '') +
     '<div style="margin-top:14px">' +
       (owner      ? '<div class="kv"><span class="k">Lot owner</span><span class="v">' + esc(owner) + '</span></div>' : '') +
-      (p.lotsize  ? '<div class="kv"><span class="k">Lot size</span><span class="v">' + esc(p.lotsize) + '</span></div>' : '') +
+      (isAdmin && p.lotsize
+        ? '<div class="kv"><span class="k">Lot size</span><span class="v">' + esc(p.lotsize) + '</span></div>' : '') +
       (e && e.name ? '<div class="kv"><span class="k">Burial recorded</span><span class="v">' + esc(e.name) + '</span></div>' : '') +
       (e && e.date ? '<div class="kv"><span class="k">Date of sale</span><span class="v">' + esc(fmtDate(e.date)) + '</span></div>' : '') +
       (e && e.saleCount > 1
@@ -1434,8 +1453,11 @@ function showPlot(id){
       (e && e.price ? '<div class="kv"><span class="k">Paid</span><span class="v">$' + esc(e.price) + '</span></div>' : '') +
       (e && e.people ? '<div class="kv"><span class="k">May be buried here</span><span class="v">' +
         esc(e.people).replace(/\n/g, '<br>') + '</span></div>' : '') +
-      postLine(e) +
-      stoneLine(e) +
+      /* The two clocks are the committee's business with the purchaser and the
+         family. Whether somebody is late setting a marker is nobody else's
+         (Buddy, 2026-09-06). The status word above still says reserved or sold,
+         which is all a visitor needs. */
+      (isAdmin ? postLine(e) + stoneLine(e) : '') +
       (e && e.by   ? '<div class="kv"><span class="k">Recorded by</span><span class="v">' + esc(e.by) + '</span></div>' : '') +
     '</div>' +
     '<p class="note">' +
@@ -1493,15 +1515,20 @@ function stoneLine(e){
   return clockLine('Headstone', stoneState(e), 'no date of burial on file');
 }
 
+/* A family lot shows the owner's name to anybody - that name is on the ground,
+   and families like to be buried near their own. Everything else about the lot
+   is committee-only (Buddy, 2026-09-06). The lot's NOTES field is not even
+   loaded any more: it held a price and is no longer exported at all. */
 function showLot(p){
   openPanel(
     '<h2>' + esc(p.owner || 'Family lot') + '</h2>' +
     '<span class="tag reserved">Family lot</span>' +
-    '<div style="margin-top:14px">' +
-      (p.size  ? '<div class="kv"><span class="k">Size</span><span class="v">' + esc(p.size) + '</span></div>' : '') +
-      (p.plots ? '<div class="kv"><span class="k">Plots</span><span class="v">' + esc(p.plots) + '</span></div>' : '') +
-      (p.notes ? '<div class="kv"><span class="k">Notes</span><span class="v">' + esc(p.notes) + '</span></div>' : '') +
-    '</div>' +
+    (isAdmin
+      ? '<div style="margin-top:14px">' +
+          (p.size  ? '<div class="kv"><span class="k">Size</span><span class="v">' + esc(p.size) + '</span></div>' : '') +
+          (p.plots ? '<div class="kv"><span class="k">Plots</span><span class="v">' + esc(p.plots) + '</span></div>' : '') +
+        '</div>'
+      : '') +
     '<button class="btn sec" onclick="closePanel()">Close</button>');
 }
 
