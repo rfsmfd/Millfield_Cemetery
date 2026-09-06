@@ -507,7 +507,7 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
      Export writes the whole thing back out as plain CSV and GeoJSON - the
      copy that outlives any account, any subscription, and any one person.
    ===================================================================== */
-const BUILD = 48;
+const BUILD = 49;
 /* Shown next to the version at the foot of About, so a number on a phone can
    be checked against a date somebody actually remembers. Bump it with BUILD. */
 const BUILD_DATE = '2026-09-06';
@@ -2678,6 +2678,15 @@ function guideSections(){
     'Open <b>' + addr + '</b> in <b>Safari</b> on an iPhone, tap the Share button, then ' +
     '<b>Add to Home Screen</b>. On Android use Chrome and <b>Install app</b>.',
     'It then opens like any other app, from its own button.']});
+
+  S.push({h:'If the map looks out of date', p:[
+    'When a newer version is ready, a brown bar appears under the title saying ' +
+    '<b>New version ready &mdash; tap to update</b>. Tapping it is all there is to it.',
+    'If you think you are missing something and no bar has appeared, tap <b>MENU</b> &rarr; ' +
+    '<b>About this map</b>. The foot of that page gives the version this copy is, the date it went out, ' +
+    'and whether it has managed to ask the server about a newer one. There is a ' +
+    '<b>Check for a newer version</b> button there as well.',
+    'You never need to delete the app and add it again.']});
 
   S.push({h:'About the plot positions', p:[SURVEY_CAVEAT]});
 
