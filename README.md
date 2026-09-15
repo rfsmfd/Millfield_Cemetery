@@ -81,7 +81,7 @@ purchaser sets the four corner markers.
 `_tools/marker-reminder.gs` runs in Google Apps Script every morning and emails the committee — and the purchaser
 or family — when either clock runs out:
 
-- **120 days** from the letter for the purchaser's four granite corner markers
+- **120 days** from the date of purchase for the purchaser's four granite corner markers
 - **180 days** from a burial for the family's headstone
 
 It reads both halves of the record through its own service account, whose credentials live in that project's Script

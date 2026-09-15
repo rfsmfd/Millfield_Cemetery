@@ -507,10 +507,10 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
      Export writes the whole thing back out as plain CSV and GeoJSON - the
      copy that outlives any account, any subscription, and any one person.
    ===================================================================== */
-const BUILD = 49;
+const BUILD = 50;
 /* Shown next to the version at the foot of About, so a number on a phone can
    be checked against a date somebody actually remembers. Bump it with BUILD. */
-const BUILD_DATE = '2026-09-06';
+const BUILD_DATE = '2026-09-15';
 const startedAt = Date.now();   // so the opening screen is never a flash
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -620,11 +620,22 @@ function today(){
 }
 
 /* Where a sale stands on its markers: done, still in time, or lapsed. */
-/* The clock starts the day the purchaser was told, which is the date on the
-   letter - it may be a day or two after the sale itself, and it would not be
-   fair to count days against somebody before the letter reached them. Falls
-   back to the date of purchase when no letter date is recorded. */
-function clockStart(e){ return (e && (e.letterDate || e.date)) || ''; }
+/* The 120 days run from the DATE OF PURCHASE. Buddy's decision, 2026-09-15.
+
+   This used to prefer the date on the letter, on the reasoning that days should
+   not count against somebody before they had been told. That was the app's own
+   choice, never the committee's - and the daily reminder email always counted
+   from the purchase date. So the two disagreed: with a letter sent a month after
+   the sale, a family could be emailed that they were overdue while the
+   committee's own screen still showed a month left. Found in the pre-release
+   review of 2026-09-15.
+
+   Every marker deadline in the app - the plot panel, the ledger, the purchase
+   letter, the export, the reminder written by hand - comes through here, and
+   so does _tools/marker-reminder.gs (markersOverdue_ uses s.date). Keep the two
+   the same. The letter date is still recorded; it simply does not start the
+   clock. */
+function clockStart(e){ return (e && e.date) || ''; }
 
 /* Both deadlines work the same way, so they share one piece of arithmetic:
    done, still in time, run out, or no date on file to count from. */
@@ -1769,7 +1780,7 @@ function formSale(){
     '<label class="f"><span>Date the letter was sent</span><input type="date" id="sLetterDate" value="' +
       esc(e.letterDate || '') + '"></label>' +
     '<small class="hint" style="margin:-6px 0 12px">The ' + POST_DAYS + ' days for the corner markers run from ' +
-      'the letter, since that is when the purchaser was told. Leave it empty and the date of purchase is used.</small>' +
+      'the date of purchase. The letter date is kept for the record.</small>' +
     '<label class="f"><span>Notes</span><textarea id="sNote" placeholder="Anything worth recording — who to contact, conditions agreed">' +
       esc(e.saleNote||'') + '</textarea></label>' +
     '<div class="sec-h">Corner markers &mdash; ' + POST_DAYS + ' days</div>' +
@@ -2715,7 +2726,7 @@ function guideSections(){
     'letter for the purchaser, with a plan of exactly which plots they bought.']});
 
   S.push({admin:true, h:'The two deadlines', p:[
-    '<b>' + POST_DAYS + ' days</b> from the letter, the purchaser sets the corner markers. Mark it done ' +
+    '<b>' + POST_DAYS + ' days</b> from the date of purchase, the purchaser sets the corner markers. Mark it done ' +
     'with <b>Record the corner markers as set</b>.',
     '<b>' + STONE_DAYS + ' days</b> from a burial, the family sets the headstone. Mark it done with ' +
     '<b>Record the headstone as set</b>.',
