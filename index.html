@@ -507,7 +507,7 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
      Export writes the whole thing back out as plain CSV and GeoJSON - the
      copy that outlives any account, any subscription, and any one person.
    ===================================================================== */
-const BUILD = 61;
+const BUILD = 62;
 /* Shown next to the version at the foot of About, so a number on a phone can
    be checked against a date somebody actually remembers. Bump it with BUILD. */
 const BUILD_DATE = '2026-09-15';
@@ -1041,7 +1041,7 @@ function cloudInit(){
       snap.forEach(function(doc){ pubRec[doc.id] = doc.data(); });
       cloud.live = true;
       rebuildCloud();
-      if(cloud.user) tidyPrivate();
+      if(cloud.user && isAdmin) tidyPrivate();
     }, function(err){
       cloud.live = false; cloud.err = err.code || 'unreachable';
       if(layerPlots) refreshCounts();
@@ -1054,9 +1054,28 @@ function cloudInit(){
       if(unsubMySig){ unsubMySig(); unsubMySig = null; mySignature = null; }
       if(unsubPrivate){ unsubPrivate(); unsubPrivate = null; privRec = {}; lotNotes = {}; rebuildCloud(); }
       if(u){
-        adminOn();
+        /* HAVING A SIGN-IN IS NOT BEING ON THE COMMITTEE. Anyone can make a
+           sign-in; the server lets only the roll read the private record. So
+           committee mode waits for the server's answer to that read, instead of
+           switching on for any sign-in - a stranger used to get the committee
+           screens, buttons and all, with every save refused (review, 2026-09-15).
+           A member already confirmed on this device goes straight in, so the
+           app still works at the cemetery with no signal. */
+        const em = (u.email || '').toLowerCase();
+        cloud.onRoll = null;
+        try{ if(em && localStorage.getItem('millfield_member') === em) adminOn(); }catch(e){}
+        const onRoll = function(yes){
+          if(cloud.onRoll === yes) return;
+          cloud.onRoll = yes;
+          try{ yes ? localStorage.setItem('millfield_member', em) : localStorage.removeItem('millfield_member'); }catch(e){}
+          if(yes){ adminOn(); return; }
+          adminOff(true);
+          notOnRollPanel();
+        };
         /* the details half - only a signed-in member can read this at all */
-        unsubPrivate = db.collection(PRIV).onSnapshot(function(snap){
+        unsubPrivate = db.collection(PRIV).onSnapshot({includeMetadataChanges: true}, function(snap){
+          if(!snap.metadata.fromCache) onRoll(true);        // the server itself allowed the read
+          if(!isAdmin) return;
           privRec = {}; lotNotes = {};
           snap.forEach(function(doc){
             if(doc.id.indexOf('lot-') === 0) lotNotes[doc.id.slice(4)] = doc.data();
@@ -1067,7 +1086,10 @@ function cloudInit(){
           repairMisKeyedSale();
           importLotNotes();
           renameLetterDates();
-        }, function(){ privRec = {}; lotNotes = {}; rebuildCloud(); });
+        }, function(err){
+          privRec = {}; lotNotes = {}; rebuildCloud();
+          if(err && err.code === 'permission-denied') onRoll(false);
+        });
         /* the committee roll. Only a member may change it, and a member
            may add the next one - so the committee can hand itself on
            without anybody touching the database or calling for help. */
@@ -3486,7 +3508,10 @@ function guideSections(){
   /* ---- the committee half ---- */
   S.push({admin:true, h:'Signing in', p:[
     'Tap <b>MENU</b> &rarr; <b>Committee sign-in</b>. The first time, use ' +
-    '<b>First time &mdash; make my sign-in</b> to set your own password.',
+    '<b>First time &mdash; make my sign-in</b> to set your own password. Forgotten it? Type your email and tap ' +
+    '<b>Forgot my password</b> for an email with a link to set a new one.',
+    'Your email has to be on the committee list first. <b>Adding someone sends them nothing</b>: after adding ' +
+    'them under <b>Who can record</b>, tap <b>Send them the sign-in steps</b> and send those by text or email.',
     'Once signed in, <b>MENU</b> &rarr; <b>Committee tools &mdash; ledger, letters</b> is where the ' +
     'record-keeping lives.']});
 
@@ -3649,6 +3674,16 @@ function nextBasemap(){ $('#btnBase').click(); }
 
 /* ---------- the committee door ---------- */
 function adminPanel(){
+  if(!isAdmin && cloud.user){
+    if(cloud.onRoll === false){ notOnRollPanel(); return; }
+    openPanel('<h2>Checking the committee list&hellip;</h2>' +
+      '<p class="note" style="margin-top:0">Signed in as <b>' + esc(cloud.user.email || '') + '</b>. The committee ' +
+        'tools open as soon as the server confirms that address is on the list. The first check on a device ' +
+        'needs a signal.</p>' +
+      '<button class="btn sec" onclick="signOut()">&#128275; Sign out</button>' +
+      '<button class="btn sec" onclick="closePanel()">Close</button>');
+    return;
+  }
   if(isAdmin){
     const waiting = deviceOnlyIds().length;
     const mine = Object.keys(rec).length;
@@ -3678,10 +3713,12 @@ function adminPanel(){
         : '<p class="note">Nobody listed yet.</p>') +
       '<label class="f" style="margin-top:12px"><span>Add a committee member</span>' +
         '<input type="email" id="mEmail" placeholder="their email address"></label>' +
-      '<button class="btn sec" onclick="addMember()">&#10133; Add them</button>' +
-      '<p class="note">They sign in with that email on their own phone &mdash; the sign-in screen will make ' +
-        'them an account the first time. Anyone on this list can add the next one, so the committee can hand ' +
-        'itself on without help from anybody.</p>' +
+      '<button class="btn sec" onclick="addMember()">&#10133; Add them to the list</button>' +
+      '<p class="note"><b>Nothing is emailed to them</b> &mdash; adding someone only allows that email address ' +
+        'to record. Send them the sign-in steps yourself:</p>' +
+      '<button class="btn sec" onclick="shareSignInSteps()">&#128203; Send them the sign-in steps</button>' +
+      '<p class="note">Anyone on this list can add the next one, so the committee can hand itself on without ' +
+        'help from anybody.</p>' +
       '<button class="btn sec" onclick="signOut()">&#128275; Sign out</button>' +
       '<button class="btn sec" onclick="closePanel()">Close</button>');
     return;
@@ -3694,6 +3731,7 @@ function adminPanel(){
     '<label class="f"><span>Password</span><input type="password" id="ap" autocomplete="current-password"></label>' +
     '<button class="btn adm" onclick="signIn()">Sign in</button>' +
     '<button class="btn sec" onclick="signUp()">First time — make my sign-in</button>' +
+    '<button class="btn sec" onclick="resetPassword()">Forgot my password</button>' +
     '<p class="note">Making a sign-in does not by itself let you change anything. A committee member has to ' +
       'put your email on the roll first.</p>' +
     (cloud.ready ? '' : '<p class="note">No connection right now — the first sign-in on a device needs one. ' +
@@ -3727,7 +3765,67 @@ function signUp(){
         ? 'That email already has a sign-in — use Sign in' : (e.code || e.message), 4000);
     });
 }
-function signOut(){ if(auth) auth.signOut(); closePanel(); }
+function signOut(){
+  try{ localStorage.removeItem('millfield_member'); }catch(e){}
+  if(auth) auth.signOut(); closePanel();
+}
+
+/* There was no way back in for a member who forgot their password. Firebase
+   emails a link to set a new one. The message is the same whether or not the
+   address has a sign-in, so the screen cannot be used to test who does. */
+function resetPassword(){
+  if(!cloud.ready){ toast('No connection right now'); return; }
+  const em = ($('#ae').value || '').trim().toLowerCase();
+  if(!em || em.indexOf('@') < 1){ toast('Type your email address first, then tap Forgot my password', 4500); return; }
+  const said = function(){
+    toast('If ' + em + ' has a sign-in, an email with a link to set a new password is on its way. Check spam too.', 7000);
+  };
+  auth.sendPasswordResetEmail(em).then(said).catch(function(e){
+    if(e && e.code === 'auth/invalid-email') toast('That email address does not look right', 4000);
+    else if(e && e.code === 'auth/network-request-failed') toast('No connection right now', 4000);
+    else said();
+  });
+}
+
+/* Signed in, but the server says this email is not on the roll. */
+function notOnRollPanel(){
+  const em = (cloud.user && cloud.user.email) || '';
+  openPanel(
+    '<h2>Not on the committee list yet</h2>' +
+    '<p class="note" style="margin-top:0">You are signed in as <b>' + esc(em) + '</b>, but that email address is ' +
+      'not on the committee list, so the committee tools stay closed.</p>' +
+    '<p class="note">Ask a committee member to add <b>' + esc(em) + '</b> under <b>Committee tools &rarr; Who can ' +
+      'record</b>. Then close the app, open it again, and sign in.</p>' +
+    '<p class="note">If they added a different address, sign out and make your sign-in with that one.</p>' +
+    '<button class="btn sec" onclick="signOut()">&#128275; Sign out</button>' +
+    '<button class="btn sec" onclick="closePanel()">Close</button>');
+}
+
+/* Adding a member sends nothing, so the steps are handed over by whoever adds them. */
+function signInStepsText(){
+  const url = location.origin + location.pathname.replace(/index\.html$/, '');
+  return 'You have been added to the Millfield Church Cemetery committee map.\n\n' +
+    '1. Open ' + url + ' on your phone.\n' +
+    '2. Tap the padlock button on the right side of the map.\n' +
+    '3. Type the email address the committee added for you.\n' +
+    '4. Make up a password (at least 6 characters).\n' +
+    '5. Tap "First time - make my sign-in".\n\n' +
+    'After that, use "Sign in" with the same email and password. If you forget the password, type your email ' +
+    'and tap "Forgot my password".';
+}
+function shareSignInSteps(){
+  const text = signInStepsText();
+  if(navigator.share){
+    navigator.share({title: 'Millfield Cemetery committee sign-in', text: text})
+      .catch(function(e){ if(e && e.name !== 'AbortError') copyText(text); });
+  }else copyText(text);
+}
+function copyText(text){
+  if(navigator.clipboard) navigator.clipboard.writeText(text).then(function(){
+    toast('Sign-in steps copied - paste them into a text or email', 5000);
+  }, function(){ toast('Could not copy on this device', 4000); });
+  else toast('Could not copy on this device', 4000);
+}
 
 function adminOn(){
   if(isAdmin) return;
