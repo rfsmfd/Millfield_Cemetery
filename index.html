@@ -507,7 +507,7 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
      Export writes the whole thing back out as plain CSV and GeoJSON - the
      copy that outlives any account, any subscription, and any one person.
    ===================================================================== */
-const BUILD = 55;
+const BUILD = 56;
 /* Shown next to the version at the foot of About, so a number on a phone can
    be checked against a date somebody actually remembers. Bump it with BUILD. */
 const BUILD_DATE = '2026-09-15';
@@ -2209,13 +2209,32 @@ function plotDiagram(ids, opts){
   out += '<g transform="translate(' + (W - 2.6).toFixed(1) + ',2.6)">' +
          '<path d="M0,3 L0,-1.7 M0,-2.2 L-.75,-.7 M0,-2.2 L.75,-.7" stroke="#000" stroke-width=".18" fill="none"/>' +
          '<text x="0" y="4.6" font-size="1.3" text-anchor="middle">N</text></g>';
-  out += '<g transform="translate(1.5,' + (H - 2.2).toFixed(1) + ')">' +
-         '<rect x="-.6" y="-.7" width="11.2" height="3.1" fill="#fff" stroke="#000" stroke-width=".06"/>' +
-         '<rect x="0" y="0" width="10" height=".45" fill="#000"/>' +
-         '<text x="0" y="1.9" font-size="1.2">10 metres</text></g>';
+  // In FEET, as a surveyed plat is: the lot sizes are feet (10X4) and so is
+  // anyone pacing it out. The drawing itself is in metres, so 10 ft = 3.048.
+  const FT = .3048, seg = 10 * FT;
+  // It sits in its own strip under the plan, so it hides no plot.
+  let bar = '';
+  for(let i = 0; i < 3; i++){
+    bar += '<rect x="' + (i * seg).toFixed(3) + '" y="0" width="' + seg.toFixed(3) + '" height=".55" fill="' +
+           (i % 2 ? '#fff' : '#000') + '" stroke="#000" stroke-width=".08"/>';
+  }
+  for(let i = 0; i <= 3; i++){
+    bar += '<text x="' + (i * seg).toFixed(3) + '" y="1.75" font-size=".95" text-anchor="middle">' + (i * 10) + '</text>';
+  }
+  bar += '<text x="' + (3 * seg + .9).toFixed(3) + '" y="1.75" font-size=".95">feet</text>';
+  const STRIP = 4.2;
+  out += '<rect x="0" y="' + H.toFixed(2) + '" width="' + W.toFixed(2) + '" height="' + STRIP + '" fill="#fff"/>' +
+         '<line x1="0" y1="' + H.toFixed(2) + '" x2="' + W.toFixed(2) + '" y2="' + H.toFixed(2) + '" stroke="#000" stroke-width=".08"/>' +
+         '<g transform="translate(1.6,' + (H + 1.6).toFixed(2) + ')">' + bar + '</g>';
 
-  return '<svg viewBox="0 0 ' + W.toFixed(1) + ' ' + H.toFixed(1) + '" ' +
-         'style="width:100%;height:auto;border:1px solid #000" ' +
+  /* opts.maxHeightIn caps the printed height by narrowing the whole drawing,
+     keeping its proportions - so the border still hugs it and the scale bar
+     stays true. On the record of purchase, at full width a tall plan ran about
+     an inch past the page and pushed the signature lines onto a page alone. */
+  const width = opts.maxHeightIn
+    ? 'min(100%,' + (opts.maxHeightIn * W / (H + STRIP)).toFixed(2) + 'in)' : '100%';
+  return '<svg viewBox="0 0 ' + W.toFixed(1) + ' ' + (H + STRIP).toFixed(1) + '" ' +
+         'style="display:block;margin:0 auto;width:' + width + ';height:auto;border:1px solid #000" ' +
          'xmlns="http://www.w3.org/2000/svg" font-family="Georgia,serif">' + out + '</svg>';
 }
 
@@ -2229,18 +2248,21 @@ function letterHTML(s){
   return '<!doctype html><html><head><meta charset="utf-8">' +
   '<title>Record of purchase - ' + esc(s.buyer || '') + '</title><style>' +
   '@page{size:letter;margin:1in}' +
-  'body{font:12pt/1.5 Georgia,"Times New Roman",serif;color:#000;margin:0}' +
-  'header{text-align:center;line-height:1.35;margin-bottom:26px}' +
+  /* Sized so the letter is ONE page, signature lines included, even with the
+     burial names and the property-line note filled in. At 12pt it ran over and
+     the signatures printed on a second page of their own. */
+  'body{font:11pt/1.4 Georgia,"Times New Roman",serif;color:#000;margin:0}' +
+  'header{text-align:center;line-height:1.3;margin-bottom:12px}' +
   'header .n{font-weight:700;letter-spacing:.4px}' +
-  'h1{font-size:13pt;text-align:center;margin:26px 0 22px;letter-spacing:.3px}' +
-  '.r{display:flex;gap:10px;margin-bottom:11px;align-items:baseline}' +
+  'h1{font-size:12.5pt;text-align:center;margin:12px 0 14px;letter-spacing:.3px}' +
+  '.r{display:flex;gap:10px;margin-bottom:6px;align-items:baseline}' +
   '.r .k{font-weight:700;white-space:nowrap}' +
   '.r .v{flex:1;border-bottom:1px solid #000;min-height:1.3em}' +
-  '.terms{margin-top:26px;text-align:justify}' +
-  '.terms p{margin:0 0 13px}' +
-  '.sign{margin-top:44px;display:flex;gap:34px}' +
+  '.terms{margin-top:14px;text-align:justify}' +
+  '.terms p{margin:0 0 8px}' +
+  '.sign{margin-top:26px;display:flex;gap:34px}' +
   '.sign div{flex:1;border-top:1px solid #000;padding-top:5px;font-size:10pt}' +
-  '.foot{margin-top:30px;font-size:9pt;color:#444;text-align:center}' +
+  '.foot{margin-top:8px;font-size:9pt;color:#444;text-align:center}' +
   '.plan{page-break-before:always;break-before:page;padding-top:8px}' +
   '.plan h2{font-size:12pt;text-align:center;margin:0 0 6px;letter-spacing:.3px}' +
   '.plan .who{text-align:center;margin:0 0 16px;font-size:11pt}' +
@@ -2290,7 +2312,7 @@ function letterHTML(s){
     '<h2>ADDENDUM &ndash; LOCATION OF PLOTS PURCHASED</h2>' +
     '<p class="who">' + esc(s.buyer || '') + ' &middot; ' + plots.length + ' plot' +
       (plots.length === 1 ? '' : 's') + ' &middot; ' + esc(plots.join(', ')) + '</p>' +
-    plotDiagram(s.plotIds) +
+    plotDiagram(s.plotIds, {maxHeightIn: 5.6}) +
     '<p class="key"><b>Filled squares</b> are the plots purchased. Surrounding plots are shown for bearings, ' +
       'each named by its row letter and number, such as F20; a large letter marks the head of a row. Drawn from the church&rsquo;s own ' +
       'layout, north to the top.</p>' +
