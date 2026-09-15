@@ -507,7 +507,7 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
      Export writes the whole thing back out as plain CSV and GeoJSON - the
      copy that outlives any account, any subscription, and any one person.
    ===================================================================== */
-const BUILD = 50;
+const BUILD = 51;
 /* Shown next to the version at the foot of About, so a number on a phone can
    be checked against a date somebody actually remembers. Bump it with BUILD. */
 const BUILD_DATE = '2026-09-15';
@@ -622,19 +622,24 @@ function today(){
 /* Where a sale stands on its markers: done, still in time, or lapsed. */
 /* The 120 days run from the DATE OF PURCHASE. Buddy's decision, 2026-09-15.
 
-   This used to prefer the date on the letter, on the reasoning that days should
-   not count against somebody before they had been told. That was the app's own
-   choice, never the committee's - and the daily reminder email always counted
-   from the purchase date. So the two disagreed: with a letter sent a month after
-   the sale, a family could be emailed that they were overdue while the
-   committee's own screen still showed a month left. Found in the pre-release
-   review of 2026-09-15.
+   This used to prefer the date on the letter, falling back to the purchase date,
+   on the reasoning that days should not count against somebody before they had
+   been told. That was the app's own choice, never the committee's.
+
+   _tools/marker-reminder.gs MUST count from the same date. Its salesFrom_()
+   picks the date (the `date:` line) and markersOverdue_() counts from it. The
+   copy that actually sends the emails lives in Google Apps Script, not in this
+   folder - changing the file here changes nothing that runs.
+
+   A correction kept on the record: the review of 2026-09-15 reported that the
+   email and this function already disagreed. They did not - salesFrom_ preferred
+   the letter date too, and the review had fed markersOverdue_ a date directly,
+   skipping the step that chooses it. This change is what first made them
+   disagree, until the Apps Script copy is given the same purchase-date rule.
 
    Every marker deadline in the app - the plot panel, the ledger, the purchase
-   letter, the export, the reminder written by hand - comes through here, and
-   so does _tools/marker-reminder.gs (markersOverdue_ uses s.date). Keep the two
-   the same. The letter date is still recorded; it simply does not start the
-   clock. */
+   letter, the export, the reminder written by hand - comes through here. The
+   letter date is still recorded; it simply does not start the clock. */
 function clockStart(e){ return (e && e.date) || ''; }
 
 /* Both deadlines work the same way, so they share one piece of arithmetic:
