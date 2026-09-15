@@ -15,7 +15,7 @@ names become findable by anyone searching for them. That is one `<meta name="rob
 
 | | |
 |---|---|
-| **565 plots** | green *available* · amber *reserved* · blue *sold* · grey *occupied* |
+| **564 plots** | green *available* · amber *reserved* · blue *sold* · grey *occupied* |
 | **113 burials** | name, birth, death, age, veteran service |
 | **107 Find a Grave links** | tap through to the memorial |
 | **57 family lots** | owner and size, named on the map once you zoom in |
