@@ -507,7 +507,7 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
      Export writes the whole thing back out as plain CSV and GeoJSON - the
      copy that outlives any account, any subscription, and any one person.
    ===================================================================== */
-const BUILD = 56;
+const BUILD = 57;
 /* Shown next to the version at the foot of About, so a number on a phone can
    be checked against a date somebody actually remembers. Bump it with BUILD. */
 const BUILD_DATE = '2026-09-15';
@@ -2155,28 +2155,72 @@ const CHURCH = {
    round them for bearings. This is what lets the committee - and the family -
    check years later that the record means the ground everyone thinks it does,
    whatever the plot numbering says. */
+/* The angle the rows run at, in degrees counter-clockwise from east, measured
+   from the plots themselves: the step from each plot to the next number in its
+   row. The rows are NOT parallel - they fan from about 64 on the west side
+   (M..U) to about 70.5 on the east (A..G) - so pass the rows being drawn and
+   the median is taken over those rows only; with none, the whole cemetery. */
+function rowAngle(rows){
+  const lat0 = 36.8797, kx = Math.cos(lat0 * Math.PI/180), byName = {}, angles = [];
+  const c = f => { const q = plotCenter(f); return [q[1] * kx, q[0]]; };
+  D.plots.features.forEach(function(f){
+    if(f.properties.row && f.properties.plot) byName[f.properties.row + f.properties.plot] = f;
+  });
+  D.plots.features.forEach(function(f){
+    const p = f.properties, next = p.row && p.plot && byName[p.row + (Number(p.plot) + 1)];
+    if(!next || (rows && rows.size && !rows.has(p.row))) return;
+    const a = c(f), b = c(next), d = Math.hypot(b[0] - a[0], b[1] - a[1]) * 111320;
+    if(d > 1 && d < 2.2) angles.push(Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI);
+  });
+  if(angles.length < 3) return rows && rows.size ? rowAngle() : 90;
+  angles.sort((x, y) => x - y);
+  return angles[Math.floor(angles.length / 2)];
+}
+
 function plotDiagram(ids, opts){
   opts = opts || {};
   const chosen = new Set(ids.map(Number));
   const picked = D.plots.features.filter(f => chosen.has(f.properties.id));
   if(!picked.length) return '';
 
-  let n = -90, s = 90, e = -180, w = 180;
+  /* TURNED SQUARE TO THE ROWS (Buddy, 2026-09-15). North-up, the cemetery
+     sits tilted across the page and a square picture wastes its corners.
+     Turned so the rows run straight up the page, more of the neighbouring
+     rows fit, the plots print larger, and the compass rose shows where true
+     north is. Ground is measured in metres, flat, about the cemetery. */
+  const soldRows = new Set(picked.map(f => f.properties.row).filter(Boolean));
+  const phi = (90 - rowAngle(soldRows)) * Math.PI / 180;   // turn counter-clockwise by this
+  const cosP = Math.cos(phi), sinP = Math.sin(phi);
+  const lat0 = picked[0].geometry.coordinates[0][0][1], lon0 = picked[0].geometry.coordinates[0][0][0];
+  const mLat = 111320, mLon = 111320 * Math.cos(lat0 * Math.PI/180);
+  const turn = function(p){                          // [lon, lat] -> [x right, y up] in metres
+    const x = (p[0] - lon0) * mLon, y = (p[1] - lat0) * mLat;
+    return [x * cosP - y * sinP, x * sinP + y * cosP];
+  };
+
+  let top = -1e9, bot = 1e9, rgt = -1e9, lft = 1e9;
   picked.forEach(function(f){
     f.geometry.coordinates[0].forEach(function(p){
-      if(p[1] > n) n = p[1]; if(p[1] < s) s = p[1];
-      if(p[0] > e) e = p[0]; if(p[0] < w) w = p[0];
+      const q = turn(p);
+      if(q[1] > top) top = q[1]; if(q[1] < bot) bot = q[1];
+      if(q[0] > rgt) rgt = q[0]; if(q[0] < lft) lft = q[0];
     });
   });
-  const midLat = (n + s) / 2;
-  const mLat = 111320, mLon = 111320 * Math.cos(midLat * Math.PI/180);
-  const pad = (opts.pad || 14) / mLat;               // metres of ground around it
-  n += pad; s -= pad; e += pad * (mLat/mLon); w -= pad * (mLat/mLon);
+  const STRIP = 5.4;                                  // the scale and compass strip, metres
+  const pad = opts.pad || 12;
+  top += pad; bot -= pad; rgt += pad; lft -= pad;
+  // widen to the shape of the space it prints in, so the page shows more rows
+  // either side rather than blank margin
+  const aspect = opts.aspect || 1.16;
+  const wantW = aspect * (top - bot + STRIP);
+  if(rgt - lft < wantW){ const more = (wantW - (rgt - lft)) / 2; rgt += more; lft -= more; }
 
-  const W = (e - w) * mLon, H = (n - s) * mLat;      // real size, in metres
-  const X = lon => (lon - w) * mLon, Y = lat => (n - lat) * mLat;
-  const ring = f => f.geometry.coordinates[0].map(p => X(p[0]).toFixed(2) + ',' + Y(p[1]).toFixed(2)).join(' ');
-  const inView = f => f.geometry.coordinates[0].some(p => p[0] > w && p[0] < e && p[1] > s && p[1] < n);
+  const W = rgt - lft, H = top - bot;                // real size, in metres
+  const X = q => q[0] - lft, Y = q => top - q[1];
+  const ring = f => f.geometry.coordinates[0].map(function(p){ const q = turn(p);
+    return X(q).toFixed(2) + ',' + Y(q).toFixed(2); }).join(' ');
+  const inView = f => f.geometry.coordinates[0].some(function(p){ const q = turn(p);
+    return q[0] > lft && q[0] < rgt && q[1] > bot && q[1] < top; });
 
   let out = '';
   D.plots.features.filter(inView).forEach(function(f){
@@ -2189,26 +2233,23 @@ function plotDiagram(ids, opts){
   // be counted off from the plan. The row's own letter stands at the head of
   // the row, usually well outside this small a picture, so a bare number here
   // could not say which row it was in.
+  // Turned square, each plot lies across the page - about ten feet wide and
+  // five tall - so the names sit level inside it and can print a size larger.
   D.plots.features.filter(inView).forEach(function(f){
-    const c = plotCenter(f), mine = chosen.has(f.properties.id);
+    const c = plotCenter(f), q = turn([c[1], c[0]]), mine = chosen.has(f.properties.id);
     const name = plotName(f.properties);
     if(!name) return;
-    out += '<text x="' + X(c[1]).toFixed(2) + '" y="' + (Y(c[0]) + .32).toFixed(2) +
-           '" font-size="' + (name.length > 2 ? .85 : 1) + '" text-anchor="middle" fill="' + (mine ? '#fff' : '#444') + '">' +
-           esc(name) + '</text>';
+    out += '<text x="' + X(q).toFixed(2) + '" y="' + (Y(q) + .36).toFixed(2) +
+           '" font-size="1.05" text-anchor="middle" fill="' + (mine ? '#fff' : '#333') +
+           '"' + (mine ? ' font-weight="bold"' : '') + '>' + esc(name) + '</text>';
   });
   (D.blocks.features || []).forEach(function(f){
-    const p = f.geometry.coordinates;
-    if(p[0] < w || p[0] > e || p[1] < s || p[1] > n) return;
-    out += '<text x="' + X(p[0]).toFixed(2) + '" y="' + Y(p[1]).toFixed(2) +
+    const q = turn(f.geometry.coordinates);
+    if(q[0] < lft || q[0] > rgt || q[1] < bot || q[1] > top) return;
+    out += '<text x="' + X(q).toFixed(2) + '" y="' + Y(q).toFixed(2) +
            '" font-size="3" font-weight="bold" text-anchor="middle" fill="#000" opacity=".55">' +
            esc(f.properties.letter) + '</text>';
   });
-
-  // north arrow and a scale bar, so the plan can be paced out on the ground
-  out += '<g transform="translate(' + (W - 2.6).toFixed(1) + ',2.6)">' +
-         '<path d="M0,3 L0,-1.7 M0,-2.2 L-.75,-.7 M0,-2.2 L.75,-.7" stroke="#000" stroke-width=".18" fill="none"/>' +
-         '<text x="0" y="4.6" font-size="1.3" text-anchor="middle">N</text></g>';
   // In FEET, as a surveyed plat is: the lot sizes are feet (10X4) and so is
   // anyone pacing it out. The drawing itself is in metres, so 10 ft = 3.048.
   const FT = .3048, seg = 10 * FT;
@@ -2222,10 +2263,19 @@ function plotDiagram(ids, opts){
     bar += '<text x="' + (i * seg).toFixed(3) + '" y="1.75" font-size=".95" text-anchor="middle">' + (i * 10) + '</text>';
   }
   bar += '<text x="' + (3 * seg + .9).toFixed(3) + '" y="1.75" font-size=".95">feet</text>';
-  const STRIP = 4.2;
+  // The compass rose, turned with the ground: its needle points to true north.
+  const deg = (phi * 180 / Math.PI).toFixed(1);
+  const rose = '<g transform="rotate(' + (-deg) + ')">' +
+    '<circle r="1.55" fill="#fff" stroke="#000" stroke-width=".07"/>' +
+    '<path d="M0,-1.9 L0,1.9 M-1.9,0 L1.9,0" stroke="#000" stroke-width=".05"/>' +
+    '<path d="M0,-1.45 L.42,0 L-.42,0 Z" fill="#000"/>' +
+    '<path d="M0,1.45 L.42,0 L-.42,0 Z" fill="#fff" stroke="#000" stroke-width=".07"/>' +
+    '<text x="0" y="-2.05" font-size="1" font-weight="bold" text-anchor="middle">N</text></g>';
   out += '<rect x="0" y="' + H.toFixed(2) + '" width="' + W.toFixed(2) + '" height="' + STRIP + '" fill="#fff"/>' +
          '<line x1="0" y1="' + H.toFixed(2) + '" x2="' + W.toFixed(2) + '" y2="' + H.toFixed(2) + '" stroke="#000" stroke-width=".08"/>' +
-         '<g transform="translate(1.6,' + (H + 1.6).toFixed(2) + ')">' + bar + '</g>';
+         '<g transform="translate(1.6,' + (H + 2.3).toFixed(2) + ')">' + bar + '</g>' +
+         '<text x="' + (W - 5.6).toFixed(2) + '" y="' + (H + 3.35).toFixed(2) + '" font-size=".95" text-anchor="end">True north</text>' +
+         '<g transform="translate(' + (W - 3.2).toFixed(2) + ',' + (H + 3.05).toFixed(2) + ')">' + rose + '</g>';
 
   /* opts.maxHeightIn caps the printed height by narrowing the whole drawing,
      keeping its proportions - so the border still hugs it and the scale bar
@@ -2234,7 +2284,9 @@ function plotDiagram(ids, opts){
   const width = opts.maxHeightIn
     ? 'min(100%,' + (opts.maxHeightIn * W / (H + STRIP)).toFixed(2) + 'in)' : '100%';
   return '<svg viewBox="0 0 ' + W.toFixed(1) + ' ' + (H + STRIP).toFixed(1) + '" ' +
-         'style="display:block;margin:0 auto;width:' + width + ';height:auto;border:1px solid #000" ' +
+         // border-box: at full width a border outside the width pushed the page
+         // past its printable edge, and every right-hand border was cut off
+         'style="display:block;box-sizing:border-box;margin:0 auto;width:' + width + ';height:auto;border:1px solid #000" ' +
          'xmlns="http://www.w3.org/2000/svg" font-family="Georgia,serif">' + out + '</svg>';
 }
 
@@ -2315,7 +2367,7 @@ function letterHTML(s){
     plotDiagram(s.plotIds, {maxHeightIn: 5.6}) +
     '<p class="key"><b>Filled squares</b> are the plots purchased. Surrounding plots are shown for bearings, ' +
       'each named by its row letter and number, such as F20; a large letter marks the head of a row. Drawn from the church&rsquo;s own ' +
-      'layout, north to the top.</p>' +
+      'layout, turned so the rows run straight up the page; the compass shows true north.</p>' +
     '<p class="caveat">' + SURVEY_CAVEAT + '</p>' +
     '<div class="sign"><div>PURCHASER</div><div>CEMETERY COMMITTEE RECORDER</div></div>' +
   '</div>' +
