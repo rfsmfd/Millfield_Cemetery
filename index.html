@@ -507,7 +507,7 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
      Export writes the whole thing back out as plain CSV and GeoJSON - the
      copy that outlives any account, any subscription, and any one person.
    ===================================================================== */
-const BUILD = 60;
+const BUILD = 61;
 /* Shown next to the version at the foot of About, so a number on a phone can
    be checked against a date somebody actually remembers. Bump it with BUILD. */
 const BUILD_DATE = '2026-09-15';
@@ -2805,22 +2805,46 @@ function signAndSend(saleId){
 }
 
 function signedReady(saleId, file, both){
-  const q = esc(saleId).replace(/'/g, '&#39;');
-  const url = URL.createObjectURL(file);
-  const canShare = !!(navigator.canShare && navigator.canShare({files: [file]}));
-  openPanel(
+  sendPanel(saleId, file,
     '<h2>Signed and saved</h2>' +
     '<p class="note" style="margin-top:0">The signed record is kept with this sale' +
-      (both ? ', signed by both.' : '. When the purchaser&rsquo;s signed copy comes back, attach it here too.') + '</p>' +
-    (canShare ? '<button class="btn adm" id="sgShare">&#128228; Send it &mdash; email, text&hellip;</button>' : '') +
+      (both ? ', signed by both.' : '. When the purchaser&rsquo;s signed copy comes back, attach it here too.') + '</p>');
+}
+
+/* Sending a signed record. A web page can hand a FILE to the device's share
+   sheet, or open an email with the TO line filled in - never both at once; no
+   browser allows it. So the purchaser's address is shown, and copied the moment
+   Send is tapped, ready to paste into To. An address typed here is used for this
+   send only and NOT saved to the sale: whether the reminder program may write to
+   a purchaser is the committee's choice on the sale form (Buddy left the
+   Cornwells' off on purpose, 2026-09-15). */
+function sendPanel(saleId, file, head){
+  const q = esc(saleId).replace(/'/g, '&#39;');
+  const s = allSales().find(function(x){ return x.saleId === saleId; }) || {};
+  const url = URL.createObjectURL(file);
+  const canShare = !!(navigator.canShare && navigator.canShare({files: [file]}));
+  openPanel(head +
+    '<label class="f" style="margin-top:12px"><span>Send to</span><input type="email" id="sdTo" value="' +
+      esc(s.email || '') + '" placeholder="their email address"></label>' +
+    '<small class="hint" style="margin:-6px 0 10px;display:block">' +
+      (s.email ? 'From the sale. ' : 'None on the sale. ') +
+      'When you tap Send it is copied &mdash; in the email, press and hold the To line and choose Paste.' +
+      (s.email ? '' : ' An address typed here is not saved to the sale.') + '</small>' +
+    (canShare ? '<button class="btn adm" id="sdShare">&#128228; Send it &mdash; email, text&hellip;</button>' : '') +
     '<a class="btn' + (canShare ? ' sec' : '') + '" href="' + url + '" target="_blank" rel="noopener">&#128196; Look at it</a>' +
     '<a class="btn sec" href="' + url + '" download="' + esc(file.name) + '">&#128190; Save a copy to this device</a>' +
     (canShare ? '' : '<p class="note">This device cannot hand a file to email directly. Save a copy, then attach it ' +
-      'to an email or text.</p>') +
+      'to an email to the address above.</p>') +
     '<button class="btn sec" onclick="showSaleFromId(\'' + q + '\')">Back to the plot</button>');
-  if(canShare) $('#sgShare').onclick = function(){
-    navigator.share({files: [file], title: 'Record of purchase',
-      text: 'Millfield Church Cemetery - your record of purchase.'})
+  if(canShare) $('#sdShare').onclick = function(){
+    const to = $('#sdTo').value.trim();
+    // both started inside the tap itself - Safari refuses either one after a wait
+    if(to && navigator.clipboard) navigator.clipboard.writeText(to).then(function(){
+      toast('Email address copied - paste it into To', 5000);
+    }, function(){});
+    navigator.share({files: [file], title: 'Millfield Church Cemetery - record of purchase',
+      text: 'Millfield Church Cemetery - your signed record of purchase for ' +
+        (s.plotIds ? saleplotNames(s.plotIds).join(', ') : 'your plots') + '.'})
       .catch(function(e){ if(e && e.name !== 'AbortError') toast('Could not send: ' + e.message, 5000); });
   };
 }
@@ -3034,11 +3058,16 @@ function openSigned(fileId){
       '<div style="color:var(--ink3);font-size:15px">' + esc(fmtDate((f.at || '').slice(0,10))) +
         (f.by ? ' · ' + esc(f.by) : '') + ' · ' + esc(f.name || '') + '</div>' +
       (f.type === 'application/pdf'
-        ? '<a class="btn" style="margin-top:14px" href="' + url + '" target="_blank" rel="noopener">&#128196; Open the PDF</a>'
+        ? '<a class="btn" style="margin-top:14px" href="' + url + '" target="_blank" rel="noopener">&#128196; Open the PDF</a>' +
+          '<button class="btn sec" id="sgSendAgain">&#128228; Send this copy</button>'
         : '<img src="' + url + '" alt="Signed copy" style="display:block;width:100%;margin-top:14px;border:1px solid var(--line)">') +
       '<a class="btn sec" href="' + url + '" download="' + esc(fname) + '">&#128190; Save a copy to this device</a>' +
       '<button class="btn sec" id="sgRemove">&#128465; Remove this copy from the sale</button>' +
       '<button class="btn sec" onclick="showSaleFromId(\'' + esc(f.saleId).replace(/'/g, '&#39;') + '\')">Back</button>');
+    if($('#sgSendAgain')) $('#sgSendAgain').onclick = function(){
+      const file = new File([blob], (f.name || fname), {type: f.type});
+      sendPanel(f.saleId, file, '<h2>Send ' + esc(f.label || 'the signed copy') + '</h2>');
+    };
     $('#sgRemove').onclick = function(){
       if(!confirm('Remove this signed copy from the sale? It cannot be brought back from the app.')) return;
       db.collection(SIGNED_PARTS).where('fileId', '==', fileId).get().then(function(snap){
