@@ -507,7 +507,7 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
      Export writes the whole thing back out as plain CSV and GeoJSON - the
      copy that outlives any account, any subscription, and any one person.
    ===================================================================== */
-const BUILD = 51;
+const BUILD = 52;
 /* Shown next to the version at the foot of About, so a number on a phone can
    be checked against a date somebody actually remembers. Bump it with BUILD. */
 const BUILD_DATE = '2026-09-15';
@@ -960,12 +960,37 @@ const PRIVATE_FIELDS = [
 
      postsIn is deliberately NOT here. It is what makes a plot read Sold rather
      than Reserved (statusOf), and both of those are public by decision. */
-  'note','buried','stoneIn','stoneDate','postsDate'
+  'note','buried','stoneIn','stoneDate','postsDate',
+  'letterSent'   // see LETTER DATE below
 ];
+
+/* ---- LETTER DATE: stored as `letterSent`, never as `letterDate` ----
+   Buddy's decision, 2026-09-15: the 120 days for corner markers run from the
+   DATE OF PURCHASE. The app counts that way (clockStart). But the reminder
+   program that sends the emails lives in Google Apps Script, and the copy
+   there picks its date with `p.letterDate || p.date` - so any record carrying
+   a `letterDate` is counted from the letter instead, and the email and the app
+   disagree (the Cutright sale: bought 1 June, letter 2 September - 29 Sep by
+   the app, 31 Dec by the email).
+
+   Changing that line in Google means Buddy editing code by hand, which he
+   should never have to do. So the app keeps the letter date under a name that
+   program does not read. With no `letterDate` anywhere, `p.letterDate || p.date`
+   is always the purchase date, and the old program is right without being
+   touched. The date the letter went out is still recorded; only its label
+   moved. `letterDate` stays in PRIVATE_FIELDS so a stray one is never public,
+   and renameLetterDates() moves any already saved.
+
+   DO NOT store a field called letterDate again. */
 function splitRecord(patch){
   const pub = {}, priv = {};
   Object.keys(patch).forEach(function(k){
-    (PRIVATE_FIELDS.indexOf(k) >= 0 ? priv : pub)[k] = patch[k];
+    let key = k, val = patch[k];
+    if(k === 'letterDate'){
+      if(patch.letterSent !== undefined) return;   // the new name wins, even when it was cleared
+      key = 'letterSent';
+    }
+    (PRIVATE_FIELDS.indexOf(key) >= 0 ? priv : pub)[key] = val;
   });
   return {pub: pub, priv: priv};
 }
@@ -1020,6 +1045,7 @@ function cloudInit(){
           tidyPrivate();
           repairMisKeyedSale();
           importLotNotes();
+          renameLetterDates();
         }, function(){ privRec = {}; lotNotes = {}; rebuildCloud(); });
         /* the committee roll. Only a member may change it, and a member
            may add the next one - so the committee can hand itself on
@@ -1069,9 +1095,15 @@ function cloudWrite(id, patch){
       .catch(function(e){ toast('Cloud refused the change: ' + (e.code||e.message), 4000); });
     if(Object.keys(half.priv).length){
       half.priv.plotId = String(id);
-      db.collection(PRIV).doc(String(id)).set(half.priv, {merge:true})
+      /* a merge never removes a field, so an old letterDate has to be deleted
+         outright - see LETTER DATE */
+      const hadOld = privRec[id] && privRec[id].letterDate !== undefined;
+      const toSave = Object.assign({}, half.priv);
+      if(hadOld) toSave.letterDate = firebase.firestore.FieldValue.delete();
+      db.collection(PRIV).doc(String(id)).set(toSave, {merge:true})
         .catch(function(e){ toast('Could not save the details: ' + (e.code||e.message), 4000); });
       privRec[id] = Object.assign({}, privRec[id], half.priv);
+      delete privRec[id].letterDate;
     }
     pubRec[id] = Object.assign({}, pubRec[id], half.pub);
     rebuildCloud();
@@ -1129,6 +1161,34 @@ function importLotNotes(){
   }).catch(function(e){
     toast('Could not save the lot notes: ' + (e.code || e.message), 5000);
   }).then(function(){ importingLotNotes = false; });
+}
+
+/* ---- one-time: move saved letter dates to their new name ----
+   See LETTER DATE by PRIVATE_FIELDS. Runs whenever a committee member is
+   signed in and the private records arrive; does nothing once no record
+   carries a letterDate. The value is copied to letterSent first and only then
+   is the old field deleted, in one write, so a date cannot be lost half way. */
+let renamingLetters = false;
+function renameLetterDates(){
+  if(renamingLetters || !cloud.user || !db) return;
+  const jobs = Object.keys(privRec).filter(function(id){
+    return privRec[id] && privRec[id].letterDate !== undefined;
+  });
+  if(!jobs.length) return;
+  renamingLetters = true;
+  Promise.all(jobs.map(function(id){
+    const r = privRec[id];
+    const keep = (r.letterSent !== undefined && r.letterSent !== '') ? r.letterSent : r.letterDate;
+    return db.collection(PRIV).doc(String(id)).set({
+      letterSent: keep,
+      letterDate: firebase.firestore.FieldValue.delete()
+    }, {merge:true});
+  })).then(function(){
+    toast('Updated ' + jobs.length + ' record' + (jobs.length === 1 ? '' : 's') +
+          ' so the marker deadline counts from the date of purchase', 4500);
+  }).catch(function(e){
+    toast('Could not update the letter dates: ' + (e.code || e.message), 5000);
+  }).then(function(){ renamingLetters = false; });
 }
 
 const ID_REPAIR = {'492':'729', '493':'730'};
@@ -1212,12 +1272,12 @@ function pushDeviceOnly(){
   const ids = deviceOnlyIds();
   if(!ids.length){ toast('Nothing waiting'); return; }
   if(!(cloud.ready && cloud.user)){ toast('Sign in first'); return; }
-  ids.forEach(function(id){
-    const body = Object.assign({}, localRec[id], {plotId:String(id)});
-    db.collection(COLL).doc(String(id)).set(body, {merge:true})
-      .catch(function(e){ toast('Cloud refused: ' + (e.code||e.message), 4000); });
-    cloudRec[id] = body;
-  });
+  /* Through cloudWrite, like every other save, so each record is split into
+     its public and private halves on the way up. This used to write the whole
+     device record - address, telephone, email, price - into the PUBLIC half
+     and rely on tidyPrivate() to move them out, which it did within seconds
+     of the public refresh. Seconds is still readable. Found 2026-09-15. */
+  ids.forEach(function(id){ cloudWrite(id, {}); });
   localRec = {}; saveLocal(); cacheCloud(); mergeRecords();
   applyStyles(); refreshCounts(); closePanel();
   toast(ids.length + ' change' + (ids.length===1?'':'s') + ' sent to the cloud');
@@ -1783,7 +1843,7 @@ function formSale(){
     '<label class="f"><span>Date of purchase</span><input type="date" id="sDate" value="' +
       esc(e.date || today()) + '"></label>' +
     '<label class="f"><span>Date the letter was sent</span><input type="date" id="sLetterDate" value="' +
-      esc(e.letterDate || '') + '"></label>' +
+      esc(e.letterSent || e.letterDate || '') + '"></label>' +
     '<small class="hint" style="margin:-6px 0 12px">The ' + POST_DAYS + ' days for the corner markers run from ' +
       'the date of purchase. The letter date is kept for the record.</small>' +
     '<label class="f"><span>Notes</span><textarea id="sNote" placeholder="Anything worth recording — who to contact, conditions agreed">' +
@@ -1815,7 +1875,7 @@ function saveSale(){
   const common = {status:'reserved', buyer:buyer, saleId:saleId, saleCount:ids.length,
     size:saleSizeName(ids.length), sizePlot:saleFootprint(ids),   // "double" and "10X10"
     price:$('#sPrice').value, date:$('#sDate').value,
-    letterDate:$('#sLetterDate').value,
+    letterSent:$('#sLetterDate').value,
     street:$('#sStreet').value.trim(), city:$('#sCity').value.trim(),
     state:$('#sState').value.trim(), zip:$('#sZip').value.trim(),
     email:$('#sEmail').value.trim(), phone:$('#sPhone').value.trim(),
@@ -1989,7 +2049,7 @@ function fullRows(){
       authorised_burials: e.people || '',
       posts_installed: e.postsIn ? 'YES' : (e.buyer ? 'NO' : ''),
       posts_installed_date: e.postsDate || '',
-      letter_date: e.letterDate || '',
+      letter_date: e.letterSent || e.letterDate || '',
       posts_due: clockStart(e) ? plusDays(clockStart(e), POST_DAYS) : '',
       burial_name: e.name || '',
       birth: e.birth || '',
