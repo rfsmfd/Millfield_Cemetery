@@ -507,7 +507,7 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
      Export writes the whole thing back out as plain CSV and GeoJSON - the
      copy that outlives any account, any subscription, and any one person.
    ===================================================================== */
-const BUILD = 59;
+const BUILD = 60;
 /* Shown next to the version at the foot of About, so a number on a phone can
    be checked against a date somebody actually remembers. Bump it with BUILD. */
 const BUILD_DATE = '2026-09-15';
@@ -933,6 +933,9 @@ const SIGNED = 'cemeterySigned', SIGNED_PARTS = 'cemeterySignedParts';
 const SIGNED_PIECE = 700000;              // characters of base64 per piece
 const SIGNED_MAX = 15 * 1024 * 1024;      // bytes - a scanned letter is well under this
 let signedFiles = {}, unsubSigned = null;
+/* Each member's own saved signature - readable by that member only. */
+const SIGS = 'cemeterySignatures';
+let mySignature = null, unsubMySig = null;
 let pubRec = {}, privRec = {};
 /* Notes that belong to a LOT rather than a plot. Held apart from privRec on
    purpose: everything in privRec is merged into the plot record, and a lot
@@ -1048,6 +1051,7 @@ function cloudInit(){
       cloud.user = u;
       if(unsubMembers){ unsubMembers(); unsubMembers = null; members = []; }
       if(unsubSigned){ unsubSigned(); unsubSigned = null; signedFiles = {}; }
+      if(unsubMySig){ unsubMySig(); unsubMySig = null; mySignature = null; }
       if(unsubPrivate){ unsubPrivate(); unsubPrivate = null; privRec = {}; lotNotes = {}; rebuildCloud(); }
       if(u){
         adminOn();
@@ -1076,6 +1080,9 @@ function cloudInit(){
           signedFiles = {};
           snap.forEach(function(d){ signedFiles[d.id] = d.data(); });
         }, function(){ signedFiles = {}; });
+        if(u.email) unsubMySig = db.collection(SIGS).doc(u.email.toLowerCase()).onSnapshot(function(d){
+          mySignature = d.exists ? d.data() : null;
+        }, function(){ mySignature = null; });
       }else{
         adminOff(true);
       }
@@ -2336,7 +2343,21 @@ function plotDiagram(ids, opts){
          'xmlns="http://www.w3.org/2000/svg" font-family="Georgia,serif">' + out + '</svg>';
 }
 
-function letterHTML(s){
+/* The two signature lines. Unsigned, exactly the committee's form; signed on
+   screen, each signature stands on its line with the name and date beneath. */
+function signBlock(sig){
+  sig = sig || {};
+  const cell = function(label, x){
+    return '<div>' + (x && x.img ? '<img src="' + x.img + '" alt="">' : '') + label +
+      (x && x.img ? '<small>' + esc(x.name || '') + (x.name ? ' &middot; ' : '') + 'signed ' +
+        esc(fmtDate(x.date)) + '</small>' : '') + '</div>';
+  };
+  const any = (sig.purchaser && sig.purchaser.img) || (sig.committee && sig.committee.img);
+  return '<div class="sign' + (any ? ' signed' : '') + '">' +
+    cell('PURCHASER', sig.purchaser) + cell('CEMETERY COMMITTEE RECORDER', sig.committee) + '</div>';
+}
+
+function letterHTML(s, sig){
   const plots = saleplotNames(s.plotIds);
   const money = s.price ? '$' + Number(s.price).toFixed(2) : '';
   const addr  = [s.street, [s.city, s.state].filter(Boolean).join(', '), s.zip].filter(Boolean).join(', ');
@@ -2359,6 +2380,11 @@ function letterHTML(s){
   '.terms{margin-top:14px;text-align:justify}' +
   '.terms p{margin:0 0 8px}' +
   '.sign{margin-top:26px;display:flex;gap:34px}' +
+  /* signed on screen: the signature stands on its line, so the block needs room above it */
+  '.sign.signed{margin-top:58px}' +
+  '.sign div{position:relative}' +
+  '.sign img{position:absolute;left:0;bottom:100%;height:52px;max-width:100%}' +
+  '.sign small{display:block;font-size:8pt;color:#333;margin-top:1px}' +
   '.sign div{flex:1;border-top:1px solid #000;padding-top:5px;font-size:10pt}' +
   '.foot{margin-top:8px;font-size:9pt;color:#444;text-align:center}' +
   '.plan{page-break-before:always;break-before:page;padding-top:8px}' +
@@ -2401,7 +2427,7 @@ function letterHTML(s){
       })() +
     '</p>' +
   '</div>' +
-  '<div class="sign"><div>PURCHASER</div><div>CEMETERY COMMITTEE RECORDER</div></div>' +
+  signBlock(sig) +
   '<div class="foot">Recorded ' + esc(fmtDate((s.at || '').slice(0,10)) || '') +
     (s.by ? ' by ' + esc(s.by) : '') + '</div>' +
 
@@ -2415,7 +2441,7 @@ function letterHTML(s){
       'each named by its row letter and number, such as F20; a large letter marks the head of a row. Drawn from the church&rsquo;s own ' +
       'layout, turned so the rows run straight up the page; the compass shows true north.</p>' +
     '<p class="caveat">' + SURVEY_CAVEAT + '</p>' +
-    '<div class="sign"><div>PURCHASER</div><div>CEMETERY COMMITTEE RECORDER</div></div>' +
+    signBlock(sig) +
   '</div>' +
   '</body></html>';
 }
@@ -2528,6 +2554,328 @@ function copyReminder(){
     function(){ toast('Select the text and copy it'); });
 }
 
+/* ---------- sign it, make the PDF, send it - all inside the app ----------
+   Buddy, 2026-09-15: "All of this should be self contained." Nobody on the
+   committee should need Adobe, a printer or a scanner. The recorder signs on
+   the screen, the purchaser too if they are there, the app builds the signed
+   PDF, keeps it with the sale, and hands it to the device's own share sheet
+   (Mail, Messages...) to send. The two libraries are loaded for signed-in
+   members only, and early, so they are cached for use with no signal. */
+const PDF_LIBS = ['https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
+                  'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'];
+let _pdfLibs = null;
+function loadPdfLibs(){
+  if(window.html2canvas && window.jspdf) return Promise.resolve();
+  if(_pdfLibs) return _pdfLibs;
+  _pdfLibs = PDF_LIBS.reduce(function(chain, src){
+    return chain.then(function(){
+      return new Promise(function(ok, fail){
+        const el = document.createElement('script');
+        el.src = src; el.onload = ok;
+        el.onerror = function(){ _pdfLibs = null; fail(new Error('could not load the PDF maker - is there a signal?')); };
+        document.head.appendChild(el);
+      });
+    });
+  }, Promise.resolve());
+  return _pdfLibs;
+}
+
+/* A signature pad: a canvas you draw on with a finger, a pen or a mouse. */
+function sigPad(canvas){
+  const dpr = window.devicePixelRatio || 1;
+  const fit = function(){
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+    const g = canvas.getContext('2d');
+    g.lineWidth = 2.4 * dpr; g.lineCap = 'round'; g.lineJoin = 'round'; g.strokeStyle = '#101820';
+  };
+  fit();
+  const g = canvas.getContext('2d');
+  let drawing = false, last = null, marks = 0;
+  const at = function(e){ const r = canvas.getBoundingClientRect(); return [(e.clientX - r.left) * dpr, (e.clientY - r.top) * dpr]; };
+  canvas.addEventListener('pointerdown', function(e){
+    e.preventDefault(); canvas.setPointerCapture(e.pointerId);
+    drawing = true; last = at(e);
+    g.beginPath(); g.arc(last[0], last[1], g.lineWidth / 2, 0, Math.PI * 2); g.fillStyle = '#101820'; g.fill();
+    marks++;
+  });
+  canvas.addEventListener('pointermove', function(e){
+    if(!drawing) return;
+    e.preventDefault();
+    const p = at(e);
+    g.beginPath(); g.moveTo(last[0], last[1]); g.lineTo(p[0], p[1]); g.stroke();
+    last = p; marks++;
+  });
+  const stop = function(){ drawing = false; };
+  canvas.addEventListener('pointerup', stop);
+  canvas.addEventListener('pointercancel', stop);
+  return {
+    clear: function(){ g.clearRect(0, 0, canvas.width, canvas.height); marks = 0; },
+    empty: function(){ return marks < 4; },
+    image: function(){ return trimInk(canvas); }
+  };
+}
+
+/* A signature cut down to its ink, so a small one is not lost in white space. */
+function trimInk(canvas){
+  const g = canvas.getContext('2d'), d = g.getImageData(0, 0, canvas.width, canvas.height).data;
+  let x0 = canvas.width, y0 = canvas.height, x1 = 0, y1 = 0;
+  for(let y = 0; y < canvas.height; y++) for(let x = 0; x < canvas.width; x++){
+    if(d[(y * canvas.width + x) * 4 + 3] > 20){ if(x < x0) x0 = x; if(x > x1) x1 = x; if(y < y0) y0 = y; if(y > y1) y1 = y; }
+  }
+  if(x1 <= x0 || y1 <= y0) return '';
+  const pad = 6, c = document.createElement('canvas');
+  c.width = x1 - x0 + pad * 2; c.height = y1 - y0 + pad * 2;
+  c.getContext('2d').drawImage(canvas, x0 - pad, y0 - pad, c.width, c.height, 0, 0, c.width, c.height);
+  return c.toDataURL('image/png');
+}
+
+/* A picture of a signature - a scan, a photo, an image kept for signing
+   documents. The paper is made see-through, so only the ink lands on the
+   letter, and it is kept small. */
+function signatureFromPicture(file){
+  return new Promise(function(resolve, reject){
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = function(){
+      const k = Math.min(1, 900 / img.naturalWidth, 360 / img.naturalHeight);
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(img.naturalWidth * k)); c.height = Math.max(1, Math.round(img.naturalHeight * k));
+      const g = c.getContext('2d');
+      g.drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      const px = g.getImageData(0, 0, c.width, c.height), d = px.data;
+      for(let i = 0; i < d.length; i += 4){
+        const light = (d[i] + d[i + 1] + d[i + 2]) / 3;
+        if(light > 200) d[i + 3] = 0;                                // paper
+        else if(light > 140) d[i + 3] = Math.round(d[i + 3] * (200 - light) / 60);   // soft edge
+      }
+      g.putImageData(px, 0, 0);
+      const out = trimInk(c);
+      out ? resolve(out) : reject(new Error('no signature found in that picture'));
+    };
+    img.onerror = function(){ URL.revokeObjectURL(url); reject(new Error('could not read that picture')); };
+    img.src = url;
+  });
+}
+
+function mySignatureSection(){
+  return '<div class="sec-h">My signature</div>' +
+    (mySignature && mySignature.img
+      ? '<div style="background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px;text-align:center">' +
+          '<img src="' + mySignature.img + '" alt="Your saved signature" style="max-width:100%;max-height:90px"></div>' +
+        '<p class="note">' + esc(mySignature.name || '') + ' &middot; used when you sign a record of purchase. ' +
+          'Only you can see it.</p>' +
+        '<button class="btn sec" onclick="editSignature()">&#9997; Change my signature</button>' +
+        '<button class="btn sec" onclick="removeSignature()">&#128465; Remove my signature</button>'
+      : '<p class="note" style="margin-top:0">Save your signature once and signing a record of purchase is a single ' +
+          'tap. Draw it, or use a picture of it. Only you can see it.</p>' +
+        '<button class="btn sec" onclick="editSignature()">&#9997; Save my signature</button>');
+}
+
+function editSignature(){
+  let picture = '';
+  openPanel(
+    '<h2>My signature</h2>' +
+    '<label class="f"><span>My name, as it should read under the signature</span>' +
+      '<input type="text" id="msName" value="' + esc((mySignature && mySignature.name) || who() || '') + '"></label>' +
+    '<div class="sec-h">Draw it</div>' +
+    '<canvas id="msPad" style="display:block;width:100%;height:150px;background:#fff;border:1px solid var(--line);' +
+      'border-radius:10px;touch-action:none;cursor:crosshair"></canvas>' +
+    '<button class="btn sec" style="min-height:40px;margin-top:6px" id="msClear">Clear</button>' +
+    '<div class="sec-h">Or use a picture of it</div>' +
+    '<p class="note" style="margin-top:0">A signature image you already have, or a photo of your signature on white paper.</p>' +
+    '<button class="btn sec" id="msPick">&#128444; Choose a picture</button>' +
+    '<div id="msPreview" hidden style="background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px;' +
+      'margin-top:8px;text-align:center"></div>' +
+    '<button class="btn adm" id="msSave">&#128190; Save my signature</button>' +
+    '<button class="btn sec" onclick="adminPanel()">Cancel</button>');
+  const pad = sigPad($('#msPad'));
+  $('#msClear').onclick = function(){ pad.clear(); picture = ''; $('#msPreview').hidden = true; };
+  $('#msPick').onclick = function(){
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = 'image/*';
+    input.onchange = function(){
+      const f = input.files && input.files[0]; if(!f) return;
+      signatureFromPicture(f).then(function(img){
+        picture = img; pad.clear();
+        $('#msPreview').innerHTML = '<img src="' + img + '" alt="" style="max-width:100%;max-height:90px">';
+        $('#msPreview').hidden = false;
+      }).catch(function(e){ toast(e.message, 5000); });
+    };
+    input.click();
+  };
+  $('#msSave').onclick = function(){
+    const img = picture || (pad.empty() ? '' : pad.image());
+    if(!img){ toast('Draw your signature or choose a picture first'); return; }
+    const name = $('#msName').value.trim();
+    if(!cloud.user || !cloud.user.email){ toast('Sign in first'); return; }
+    db.collection(SIGS).doc(cloud.user.email.toLowerCase()).set({img: img, name: name, at: new Date().toISOString()})
+      .then(function(){ if(name) localStorage.setItem('millfield_who', name); toast('Signature saved'); adminPanel(); })
+      .catch(function(e){ toast('Could not save: ' + (e.code || e.message), 5000); });
+  };
+}
+
+function removeSignature(){
+  if(!cloud.user || !cloud.user.email) return;
+  if(!confirm('Remove your saved signature? Records already signed keep it.')) return;
+  db.collection(SIGS).doc(cloud.user.email.toLowerCase()).delete()
+    .then(function(){ mySignature = null; toast('Signature removed'); adminPanel(); })
+    .catch(function(e){ toast('Could not remove: ' + (e.code || e.message), 5000); });
+}
+
+function signAndSend(saleId){
+  const s = allSales().find(function(x){ return x.saleId === saleId; });
+  if(!s){ toast('That sale is not in the record'); return; }
+  const q = esc(saleId).replace(/'/g, '&#39;');
+  const padBox = function(id){
+    return '<canvas id="' + id + '" style="display:block;width:100%;height:150px;background:#fff;' +
+      'border:1px solid var(--line);border-radius:10px;touch-action:none;cursor:crosshair"></canvas>' +
+      '<button class="btn sec" style="min-height:40px;margin-top:6px" id="' + id + 'Clear">Clear</button>';
+  };
+  openPanel(
+    '<h2>Sign the record of purchase</h2>' +
+    '<div style="color:var(--ink3);font-size:16px">' + esc(s.buyer || '') + ' &middot; ' +
+      esc(saleplotNames(s.plotIds).join(', ')) + '</div>' +
+    '<p class="note">Sign in the white box with a finger, a pen or the mouse. The app puts the signature on ' +
+      'both pages of the record, keeps the signed PDF with this sale, and lets you send it.</p>' +
+    '<div class="sec-h">Cemetery Committee Recorder</div>' +
+    '<label class="f"><span>Name</span><input type="text" id="sgCName" value="' +
+      esc((mySignature && mySignature.name) || who() || '') + '"></label>' +
+    (mySignature && mySignature.img
+      ? '<div id="sgSaved" style="background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px;text-align:center">' +
+          '<img src="' + mySignature.img + '" alt="Your saved signature" style="max-width:100%;max-height:90px"></div>' +
+        '<label class="checkrow" style="margin-top:8px"><input type="checkbox" id="sgByHand"> ' +
+          '<span>Sign by hand instead of my saved signature</span></label>' +
+        '<div id="sgHand" hidden>' + padBox('padC') + '</div>'
+      : padBox('padC') +
+        '<p class="note">Tip: save your signature once under &#9881; Committee tools &rarr; My signature, and next time ' +
+          'this is a single tap.</p>') +
+    '<label class="checkrow" style="margin-top:14px"><input type="checkbox" id="sgWithP"> ' +
+      '<span>The purchaser is here and will sign now</span></label>' +
+    '<div id="sgPBox" hidden>' +
+      '<div class="sec-h">Purchaser</div>' +
+      '<label class="f"><span>Name</span><input type="text" id="sgPName" value="' + esc(s.buyer || '') + '"></label>' +
+      padBox('padP') +
+    '</div>' +
+    '<button class="btn adm" id="sgMake">&#9997; Make the signed record</button>' +
+    '<button class="btn sec" onclick="showSaleFromId(\'' + q + '\')">Cancel</button>');
+  // the pad is measured when it is shown - a hidden canvas has no size
+  let padC = null;
+  const showPad = function(){ if(!padC){ padC = sigPad($('#padC')); $('#padCClear').onclick = function(){ padC.clear(); }; } };
+  const saved = !!(mySignature && mySignature.img);
+  if(saved) $('#sgByHand').onchange = function(){
+    $('#sgHand').hidden = !this.checked; $('#sgSaved').hidden = this.checked;
+    if(this.checked) showPad();
+  };
+  else showPad();
+  const recorderImage = function(){
+    if(saved && !$('#sgByHand').checked) return mySignature.img;
+    return padC && !padC.empty() ? padC.image() : '';
+  };
+  let padP = null;
+  $('#sgWithP').onchange = function(){
+    $('#sgPBox').hidden = !this.checked;
+    if(this.checked && !padP){ padP = sigPad($('#padP')); $('#padPClear').onclick = function(){ padP.clear(); }; }
+  };
+  loadPdfLibs().catch(function(){});                   // start fetching while they sign
+  $('#sgMake').onclick = function(){
+    const cImg = recorderImage();
+    if(!cImg){ toast('The recorder needs to sign first'); return; }
+    const withP = $('#sgWithP').checked;
+    if(withP && (!padP || padP.empty())){ toast('The purchaser has not signed yet'); return; }
+    const on = today();
+    const sig = {committee: {img: cImg, name: $('#sgCName').value.trim(), date: on}};
+    if(withP) sig.purchaser = {img: padP.image(), name: $('#sgPName').value.trim(), date: on};
+    if($('#sgCName').value.trim()) localStorage.setItem('millfield_who', $('#sgCName').value.trim());
+    const btn = $('#sgMake'); btn.disabled = true; btn.textContent = 'Making the PDF…';
+    let file;
+    loadPdfLibs().then(function(){ return letterPdf(s, sig); }).then(function(blob){
+      const fname = 'Record of purchase - ' + (s.buyer || 'purchaser').replace(/[\\/:*?"<>|&]+/g, ' ').replace(/\s+/g, ' ').trim() +
+        ' - ' + on + '.pdf';
+      file = new File([blob], fname, {type: 'application/pdf'});
+      btn.textContent = 'Saving it with the sale…';
+      return saveSigned(saleId, file, true, withP ? 'Signed by both' : 'Signed by the committee');
+    }).then(function(){
+      signedReady(saleId, file, withP);
+    }).catch(function(e){
+      toast('Could not make it: ' + (e && (e.code || e.message) || 'unknown'), 6000);
+      btn.disabled = false; btn.textContent = 'Make the signed record';
+    });
+  };
+}
+
+function signedReady(saleId, file, both){
+  const q = esc(saleId).replace(/'/g, '&#39;');
+  const url = URL.createObjectURL(file);
+  const canShare = !!(navigator.canShare && navigator.canShare({files: [file]}));
+  openPanel(
+    '<h2>Signed and saved</h2>' +
+    '<p class="note" style="margin-top:0">The signed record is kept with this sale' +
+      (both ? ', signed by both.' : '. When the purchaser&rsquo;s signed copy comes back, attach it here too.') + '</p>' +
+    (canShare ? '<button class="btn adm" id="sgShare">&#128228; Send it &mdash; email, text&hellip;</button>' : '') +
+    '<a class="btn' + (canShare ? ' sec' : '') + '" href="' + url + '" target="_blank" rel="noopener">&#128196; Look at it</a>' +
+    '<a class="btn sec" href="' + url + '" download="' + esc(file.name) + '">&#128190; Save a copy to this device</a>' +
+    (canShare ? '' : '<p class="note">This device cannot hand a file to email directly. Save a copy, then attach it ' +
+      'to an email or text.</p>') +
+    '<button class="btn sec" onclick="showSaleFromId(\'' + q + '\')">Back to the plot</button>');
+  if(canShare) $('#sgShare').onclick = function(){
+    navigator.share({files: [file], title: 'Record of purchase',
+      text: 'Millfield Church Cemetery - your record of purchase.'})
+      .catch(function(e){ if(e && e.name !== 'AbortError') toast('Could not send: ' + e.message, 5000); });
+  };
+}
+
+/* The record, as a PDF, made in the browser: each of the two pages is laid out
+   at letter size, drawn to a picture at print sharpness, and put on its own
+   PDF page. A page that runs long is scaled to fit rather than split. */
+function letterPdf(s, sig){
+  return new Promise(function(resolve, reject){
+    const frame = document.createElement('iframe');
+    frame.style.cssText = 'position:fixed;left:-10000px;top:0;width:816px;height:1056px;border:0';
+    document.body.appendChild(frame);
+    const done = function(err, val){ frame.remove(); err ? reject(err) : resolve(val); };
+    frame.onload = function(){
+      try{
+        const d = frame.contentDocument;
+        d.head.insertAdjacentHTML('beforeend', '<style>body{max-width:none!important;margin:0!important;' +
+          'padding:0!important;background:#fff!important}.plan{border:0!important;margin:0!important;padding-top:8px!important}' +
+          '.pg{width:816px;min-height:1056px;padding:96px;box-sizing:border-box;background:#fff}</style>');
+        const plan = d.querySelector('.plan');
+        const pg1 = d.createElement('div'), pg2 = d.createElement('div');
+        pg1.className = pg2.className = 'pg';
+        [...d.body.childNodes].forEach(function(n){ if(n !== plan) pg1.appendChild(n); });
+        if(plan) pg2.appendChild(plan);
+        d.body.appendChild(pg1); if(plan) d.body.appendChild(pg2);
+        // html2canvas drops a border set on an <svg> itself: carry it on a box around it
+        const svg = plan && plan.querySelector('svg');
+        if(svg){
+          const w = svg.getBoundingClientRect().width;
+          const box = d.createElement('div');
+          box.style.cssText = 'border:1px solid #000;width:' + w + 'px;margin:0 auto;line-height:0;box-sizing:border-box';
+          svg.parentNode.insertBefore(box, svg); box.appendChild(svg);
+          svg.style.border = '0'; svg.style.width = '100%'; svg.style.margin = '0';
+        }
+        const pages = plan ? [pg1, pg2] : [pg1];
+        const pdf = new window.jspdf.jsPDF({unit: 'pt', format: 'letter'});
+        const shot = function(i){
+          if(i >= pages.length) return Promise.resolve();
+          return window.html2canvas(pages[i], {scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false,
+                                               windowWidth: 816}).then(function(c){
+            if(i) pdf.addPage('letter');
+            let w = 612, h = c.height * 612 / c.width;
+            if(h > 792){ w = w * 792 / h; h = 792; }
+            pdf.addImage(c.toDataURL('image/jpeg', 0.9), 'JPEG', (612 - w) / 2, 0, w, h);
+            return shot(i + 1);
+          });
+        };
+        (d.fonts ? d.fonts.ready : Promise.resolve()).then(function(){ return shot(0); })
+          .then(function(){ done(null, pdf.output('blob')); }).catch(function(e){ done(e); });
+      }catch(e){ done(e); }
+    };
+    frame.srcdoc = letterHTML(s, sig).replace(/window\.print\(\)/g, '');
+  });
+}
+
 /* ---------- the signed copy, attached to the sale ---------- */
 const SIGNED_LABELS = ['Signed by the committee', 'Signed by the purchaser', 'Signed by both'];
 
@@ -2550,9 +2898,10 @@ function signedSection(saleId){
             '</small></span><button class="v" style="color:var(--admin);font-weight:700" ' +
             'onclick="openSigned(\'' + esc(f.id) + '\')">Open</button></div>';
         }).join('')
-      : '<p class="note" style="margin-top:0">No signed copy attached yet. Print the record, sign it, and ' +
-        'attach the signed PDF or a photo of the signed paper, so the church&rsquo;s copy lives here.</p>') +
-    '<button class="btn sec" onclick="attachSigned(\'' + q + '\')">&#128206; Attach a signed copy</button>';
+      : '<p class="note" style="margin-top:0">Not signed yet. Sign it here on the screen and the app makes the ' +
+        'signed record, keeps it with this sale and lets you send it.</p>') +
+    '<button class="btn adm" onclick="signAndSend(\'' + q + '\')">&#9997; Sign and send the record</button>' +
+    '<button class="btn sec" onclick="attachSigned(\'' + q + '\')">&#128206; Attach a copy signed elsewhere</button>';
 }
 
 function attachSigned(saleId){
@@ -3128,10 +3477,14 @@ function guideSections(){
   S.push({admin:true, h:'The record of purchase', p:[
     'After a sale is saved, the plot has a <b>Print the record of purchase</b> button. That prints the ' +
     'letter for the purchaser, with a plan of exactly which plots they bought.',
-    'Once it is signed, keep the church&rsquo;s copy <b>with the sale</b>, not in an email: on any plot in the ' +
-    'sale, tap <b>Attach a signed copy</b> and choose the signed PDF, or take a photo of the signed paper. ' +
-    'Attach the committee&rsquo;s signed copy, then the one the purchaser signs when it comes back. ' +
-    'Each shows under <b>Signed record of purchase</b> with its date, and <b>Open</b> shows it again.']});
+    'To sign it, no printer or other program is needed: on any plot in the sale tap <b>Sign and send the ' +
+    'record</b>, sign in the white box with a finger or the mouse (or, once you have saved your signature under ' +
+    '<b>Committee tools &rarr; My signature</b>, it is already there), and tick the box if the purchaser is there ' +
+    'to sign too. Tap <b>Make the signed record</b>. The app puts the signatures on both pages, keeps the ' +
+    'signed PDF with the sale, and <b>Send it</b> opens your phone&rsquo;s own Mail or Messages with it attached.',
+    'If the purchaser signs at home and sends it back, tap <b>Attach a copy signed elsewhere</b> and choose ' +
+    'their PDF, or take a photo of the signed paper. Every copy shows under <b>Signed record of purchase</b> ' +
+    'with its date, and <b>Open</b> shows it again.']});
 
   S.push({admin:true, h:'The two deadlines', p:[
     '<b>' + POST_DAYS + ' days</b> from the date of purchase, the purchaser sets the corner markers. Mark it done ' +
@@ -3283,6 +3636,7 @@ function adminPanel(){
       '<p class="note">The plain-file copy of everything. Keep the newest one somewhere safe — Excel reads ' +
         'the CSV, any mapping program reads the GeoJSON, and neither needs an account or a subscription.</p>' +
       '<button class="btn sec" onclick="exportChanges()">&#128228; Export just the app changes for ArcGIS</button>' +
+      mySignatureSection() +
       '<div class="sec-h">Who can record</div>' +
       (members.length
         ? members.map(function(m){
@@ -3349,6 +3703,7 @@ function signOut(){ if(auth) auth.signOut(); closePanel(); }
 function adminOn(){
   if(isAdmin) return;
   isAdmin = true;
+  loadPdfLibs().catch(function(){});   // fetched now, so signing works later with no signal
   document.body.classList.add('isadmin');
   $('#topbar').classList.add('admin');
   $('#btnAdmin').textContent = '🧰';                    // tools, not a padlock
