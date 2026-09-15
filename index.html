@@ -507,7 +507,7 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
      Export writes the whole thing back out as plain CSV and GeoJSON - the
      copy that outlives any account, any subscription, and any one person.
    ===================================================================== */
-const BUILD = 54;
+const BUILD = 55;
 /* Shown next to the version at the foot of About, so a number on a phone can
    be checked against a date somebody actually remembers. Bump it with BUILD. */
 const BUILD_DATE = '2026-09-15';
@@ -2185,13 +2185,17 @@ function plotDiagram(ids, opts){
     out += '<polygon points="' + ring(f) + '" fill="' + (mine ? '#333' : st === 'available' ? '#fff' : '#e6e6e6') +
            '" stroke="#000" stroke-width="' + (mine ? .28 : .1) + '"/>';
   });
-  // number every plot in view, so a neighbour can be counted off from the plan
+  // name every plot in view - row letter and number, F20 - so a neighbour can
+  // be counted off from the plan. The row's own letter stands at the head of
+  // the row, usually well outside this small a picture, so a bare number here
+  // could not say which row it was in.
   D.plots.features.filter(inView).forEach(function(f){
     const c = plotCenter(f), mine = chosen.has(f.properties.id);
-    if(!f.properties.plot) return;
-    out += '<text x="' + X(c[1]).toFixed(2) + '" y="' + (Y(c[0]) + .35).toFixed(2) +
-           '" font-size="1" text-anchor="middle" fill="' + (mine ? '#fff' : '#444') + '">' +
-           esc(f.properties.plot) + '</text>';
+    const name = plotName(f.properties);
+    if(!name) return;
+    out += '<text x="' + X(c[1]).toFixed(2) + '" y="' + (Y(c[0]) + .32).toFixed(2) +
+           '" font-size="' + (name.length > 2 ? .85 : 1) + '" text-anchor="middle" fill="' + (mine ? '#fff' : '#444') + '">' +
+           esc(name) + '</text>';
   });
   (D.blocks.features || []).forEach(function(f){
     const p = f.geometry.coordinates;
@@ -2206,6 +2210,7 @@ function plotDiagram(ids, opts){
          '<path d="M0,3 L0,-1.7 M0,-2.2 L-.75,-.7 M0,-2.2 L.75,-.7" stroke="#000" stroke-width=".18" fill="none"/>' +
          '<text x="0" y="4.6" font-size="1.3" text-anchor="middle">N</text></g>';
   out += '<g transform="translate(1.5,' + (H - 2.2).toFixed(1) + ')">' +
+         '<rect x="-.6" y="-.7" width="11.2" height="3.1" fill="#fff" stroke="#000" stroke-width=".06"/>' +
          '<rect x="0" y="0" width="10" height=".45" fill="#000"/>' +
          '<text x="0" y="1.9" font-size="1.2">10 metres</text></g>';
 
@@ -2287,7 +2292,7 @@ function letterHTML(s){
       (plots.length === 1 ? '' : 's') + ' &middot; ' + esc(plots.join(', ')) + '</p>' +
     plotDiagram(s.plotIds) +
     '<p class="key"><b>Filled squares</b> are the plots purchased. Surrounding plots are shown for bearings, ' +
-      'each with its lot number; large letters are the cemetery sections. Drawn from the church&rsquo;s own ' +
+      'each named by its row letter and number, such as F20; a large letter marks the head of a row. Drawn from the church&rsquo;s own ' +
       'layout, north to the top.</p>' +
     '<p class="caveat">' + SURVEY_CAVEAT + '</p>' +
     '<div class="sign"><div>PURCHASER</div><div>CEMETERY COMMITTEE RECORDER</div></div>' +
