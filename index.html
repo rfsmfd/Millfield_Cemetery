@@ -507,7 +507,7 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
      Export writes the whole thing back out as plain CSV and GeoJSON - the
      copy that outlives any account, any subscription, and any one person.
    ===================================================================== */
-const BUILD = 52;
+const BUILD = 53;
 /* Shown next to the version at the foot of About, so a number on a phone can
    be checked against a date somebody actually remembers. Bump it with BUILD. */
 const BUILD_DATE = '2026-09-15';
@@ -836,10 +836,17 @@ function appBurials(){
 /* There is no derived section letter in the data any more - the export no
    longer writes one, because it was wrong on 263 of the 565 plots. The only
    letters that exist are the ones the committee typed. */
-/* A plot shows its lot number, plain, exactly as the survey drew it. The
-   section letter is NOT worked out from the map - that was tried and it was
-   wrong on 263 plots. Where the full number matters, on a record of purchase,
-   the committee types it, and what they type is what the record keeps. */
+/* A plot's full name is its ROW LETTER and its number - F20.
+
+   The letter comes from data/plots.geojson `row`, written by
+   _tools/assign-rows.js (2026-09-15). That tool walks each row from its letter
+   the way the cemetery is laid out, and refuses to write unless the family lots
+   that record their plot names come out exactly (Cornwell M20-M27, Cutright
+   F20-F21) and no row crosses an aisle in the ArcGIS Lines layer. It is NOT the
+   nearest-label guess abandoned earlier, which was wrong on 263 plots.
+
+   What the committee types still wins: a typed full number first, then a letter
+   typed on the sale form, then the row, then the bare number. */
 function setSection(p){ return p && rec[p.id] && rec[p.id].section; }
 function labelSure(p){ return !!plotName(p); }
 function plotName(p){
@@ -848,6 +855,7 @@ function plotName(p){
   if(typed) return typed;
   const hand = setSection(p);
   if(hand) return hand + (p.plot || '');
+  if(p.row && p.plot) return p.row + p.plot;
   return p.plot || '';
 }
 function plotNameById(id){ return plotName(plotById(id)); }
@@ -1290,10 +1298,30 @@ function cloudLabel(){
 }
 
 /* ---------- load ---------- */
+/* Which plot each surveyed grave lies inside, so its panel can name the plot.
+   Stored as inPlot - deliberately not plotId, which on a grave means "a burial
+   recorded through the app" and switches on the committee's edit buttons. */
+function graveInPlot(){
+  const inside = function(x, y, ring){
+    let ins = false;
+    for(let i = 0, j = ring.length - 1; i < ring.length; j = i++){
+      const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+      if(((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) ins = !ins;
+    }
+    return ins;
+  };
+  D.burials.features.forEach(function(b){
+    const x = b.geometry.coordinates[0], y = b.geometry.coordinates[1];
+    const hit = D.plots.features.find(function(f){ return inside(x, y, f.geometry.coordinates[0]); });
+    if(hit) b.properties.inPlot = hit.properties.id;
+  });
+}
+
 async function load(){
   const names = ['plots','burials','lots','blocks','posts','boundary'];
   const res = await Promise.all(names.map(n => fetch('data/' + n + '.geojson').then(r => r.json())));
   names.forEach(function(n,i){ D[n] = res[i]; });
+  graveInPlot();
   markBoundaryDoubt();
   loadStored();
   cloudInit();
@@ -1523,7 +1551,13 @@ function showBurial(p){
        (Buddy, 2026-09-06). */
     '<div style="margin-top:14px">' +
       rows.map(r => '<div class="kv"><span class="k">' + r[0] + '</span><span class="v">' + esc(r[1]) + '</span></div>').join('') +
-      (p.plot ? '<div class="kv"><span class="k">Plot</span><span class="v">' + esc(p.plot) + '</span></div>' : '') +
+      (function(){
+        /* a surveyed grave carries no plot of its own; the plot it lies inside
+           is found once when the data loads (inPlot). Three graves lie in no
+           plot outline, and say nothing rather than guess. */
+        const pl = p.plot || (p.inPlot != null ? plotNameById(p.inPlot) : '');
+        return pl ? '<div class="kv"><span class="k">Plot</span><span class="v">' + esc(pl) + '</span></div>' : '';
+      })() +
       (isAdmin
         ? (p.note ? '<div class="kv"><span class="k">Note</span><span class="v">' + esc(p.note) + '</span></div>' : '') +
           (p.buried ? '<div class="kv"><span class="k">Buried</span><span class="v">' + esc(fmtDate(p.buried)) + '</span></div>' : '') +
@@ -3117,7 +3151,16 @@ function wire(){
     const all = D.burials.features.map(function(f){
         return {who:f.properties, ll:[f.geometry.coordinates[1], f.geometry.coordinates[0]]};
       }).concat(appList.map(function(b){ return {who:b, ll:b.ll}; }));
-    const people = all.filter(h => (h.who.name||'').toLowerCase().includes(q));
+    /* Every word typed has to be in the name, in any order. "Walter Laine" finds
+       WALTER WEST LAINE, JR - the whole phrase used to have to appear exactly as
+       stored, so a first and last name found nothing (review, 2026-09-15).
+       Commas, full stops and quote marks are ignored on both sides. */
+    const words = function(s){ return (s || '').toLowerCase().replace(/[.,"'()]/g, ' ').split(/\s+/).filter(Boolean); };
+    const want = words(q);
+    const people = all.filter(function(h){
+      const have = words(h.who.name).join(' ');
+      return want.length && want.every(function(w){ return have.indexOf(w) !== -1; });
+    });
     /* match either the survey's lot number or whatever the committee typed,
        so both "20" and "F20" find the same plot */
     const plots = D.plots.features.filter(function(f){

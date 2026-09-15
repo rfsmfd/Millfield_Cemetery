@@ -21,7 +21,7 @@ names become findable by anyone searching for them. That is one `<meta name="rob
 | **57 family lots** | owner and size, named on the map once you zoom in |
 | **69 plots over the property line** | outlined in broken red — they may not exist as drawn |
 
-Plus surname and plot-number search, a filter for available plots, veterans, and your own position on the map.
+Plus search by any words of a name, or by a plot such as F20, a filter for available plots, veterans, and your own position on the map.
 
 ## The four states of a plot
 
@@ -59,15 +59,19 @@ plot is spoken for, the owner's name, whether the markers and headstone are in p
 Committee only, refused by the server to anyone else: addresses, email, telephone, price, date of purchase, who
 may be buried there, and which member recorded it. These live in `cemeteryPrivate`, which returns 403 to the public.
 
-## Section letters — read before reinstating anything
+## Row letters
 
-A plot's full name is a section letter plus a number, "F20". It **cannot be derived from the map** — giving each
-plot the nearest of the 21 `BLOCK` label points produced 108 duplicated labels across 263 of the 565 plots, and
-passed its only available check while doing so. Chaining shared edges, banding the rotated grid and clustering by
-spacing all failed too; the information is not in the geodatabase.
+A plot is named by its row letter and its number, "F20". Each row is one plot wide, its letter stands just
+before plot 1, and the numbers count up along the row. The letters are a real ArcGIS field - `BLOCK.BLOCKLET` -
+but they sit on 21 label points, one per row, not on the plots.
 
-**The committee types the letter** on the sale form, and it is stored with the sale. The map shows the survey's
-bare lot number and claims nothing more.
+`_tools/assign-rows.js` joins each plot to its row by walking the row from its letter, and **refuses to write**
+unless the evidence agrees: every family lot that records its plot names must come out exactly (the Cornwell lot
+M20-M27, the Cutright sale F20-F21), all 21 letters must be used once with no name repeated, and no row may cross
+an aisle in the ArcGIS Lines layer. Run it after every export.
+
+An earlier attempt gave each plot the nearest label point and was wrong on 263 of 565 plots while passing its only
+check. This is not that. What the committee types on the sale form still overrides the letter.
 
 ## The property line
 
