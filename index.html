@@ -507,7 +507,7 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
      Export writes the whole thing back out as plain CSV and GeoJSON - the
      copy that outlives any account, any subscription, and any one person.
    ===================================================================== */
-const BUILD = 58;
+const BUILD = 59;
 /* Shown next to the version at the foot of About, so a number on a phone can
    be checked against a date somebody actually remembers. Bump it with BUILD. */
 const BUILD_DATE = '2026-09-15';
@@ -925,6 +925,14 @@ const PRIV = 'cemeteryPrivate';      // committee only: living people's details
 const MEMB = 'cemeteryCommittee';    // who is allowed to write, one document per email
 let db = null, auth = null;
 let members = [], unsubMembers = null, unsubPrivate = null;
+/* The signed record of purchase, kept WITH its sale rather than in somebody's
+   email (Buddy, 2026-09-15). Committee only, like cemeteryPrivate. A file is
+   stored in pieces under a megabyte each; signedFiles holds only the small
+   descriptions, and a file's pieces are fetched when it is opened. */
+const SIGNED = 'cemeterySigned', SIGNED_PARTS = 'cemeterySignedParts';
+const SIGNED_PIECE = 700000;              // characters of base64 per piece
+const SIGNED_MAX = 15 * 1024 * 1024;      // bytes - a scanned letter is well under this
+let signedFiles = {}, unsubSigned = null;
 let pubRec = {}, privRec = {};
 /* Notes that belong to a LOT rather than a plot. Held apart from privRec on
    purpose: everything in privRec is merged into the plot record, and a lot
@@ -1039,6 +1047,7 @@ function cloudInit(){
     auth.onAuthStateChanged(function(u){
       cloud.user = u;
       if(unsubMembers){ unsubMembers(); unsubMembers = null; members = []; }
+      if(unsubSigned){ unsubSigned(); unsubSigned = null; signedFiles = {}; }
       if(unsubPrivate){ unsubPrivate(); unsubPrivate = null; privRec = {}; lotNotes = {}; rebuildCloud(); }
       if(u){
         adminOn();
@@ -1063,6 +1072,10 @@ function cloudInit(){
           snap.forEach(function(d){ members.push(Object.assign({email:d.id}, d.data())); });
           members.sort(function(a,b){ return a.email.localeCompare(b.email); });
         }, function(){ members = []; });
+        unsubSigned = db.collection(SIGNED).onSnapshot(function(snap){
+          signedFiles = {};
+          snap.forEach(function(d){ signedFiles[d.id] = d.data(); });
+        }, function(){ signedFiles = {}; });
       }else{
         adminOff(true);
       }
@@ -1301,6 +1314,20 @@ function cloudLabel(){
 /* Which plot each surveyed grave lies inside, so its panel can name the plot.
    Stored as inPlot - deliberately not plotId, which on a grave means "a burial
    recorded through the app" and switches on the committee's edit buttons. */
+/* The plot under a point on the ground, or undefined. */
+function plotAt(latlng){
+  const x = latlng.lng, y = latlng.lat;
+  return D.plots.features.find(function(f){
+    const ring = f.geometry.coordinates[0];
+    let ins = false;
+    for(let i = 0, j = ring.length - 1; i < ring.length; j = i++){
+      const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+      if(((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) ins = !ins;
+    }
+    return ins;
+  });
+}
+
 function graveInPlot(){
   const inside = function(x, y, ring){
     let ins = false;
@@ -1375,7 +1402,15 @@ function init(){
      like the layer failing to load until you toggled it back on. */
   layerLots = L.geoJSON(D.lots, {
     style:{color:'#F4E3B6', weight:2.5, fillOpacity:0.05, fillColor:'#F4E3B6'},
-    onEachFeature:function(f,l){ l.on('click', function(e){ L.DomEvent.stop(e); showLot(f.properties); }); }
+    /* While picking the plots for a sale, a tap inside a family lot means the
+       plot under the finger, not the lot. The lot outline sits on top and was
+       swallowing those taps - Buddy could not pick the Cornwell plots with
+       Family lots showing (2026-09-15). */
+    onEachFeature:function(f,l){ l.on('click', function(e){
+      L.DomEvent.stop(e);
+      if(selMode){ const hit = plotAt(e.latlng); if(hit) togglePlot(hit.properties.id); return; }
+      showLot(f.properties);
+    }); }
   }).addTo(map);
 
   /* The family name across its own ground - but only where the lot is big
@@ -1386,7 +1421,12 @@ function init(){
   layerBurials = L.geoJSON(D.burials, {
     pointToLayer:function(f,ll){ return L.circleMarker(ll,{pane:'graves', radius:6, weight:2, color:'#F4ECD9',
       fillColor: f.properties.vet ? '#8C2F26' : '#211B11', fillOpacity:1}); },
-    onEachFeature:function(f,l){ l.on('click', function(e){ L.DomEvent.stop(e); showBurial(f.properties); }); }
+    onEachFeature:function(f,l){ l.on('click', function(e){
+      L.DomEvent.stop(e);
+      // the same while picking: a grave dot stands for the plot it lies in
+      if(selMode){ const hit = plotAt(e.latlng); if(hit) togglePlot(hit.properties.id); return; }
+      showBurial(f.properties);
+    }); }
   }).addTo(map);
 
   layerSaleLots  = L.layerGroup().addTo(map);
@@ -1645,7 +1685,9 @@ function showPlot(id){
               '\')">&#9989; Record the corner markers as set</button>') +
             (e.email || e.phone
               ? '<button class="btn sec" onclick="remindPurchaser(\'' + esc(e.saleId || ('plot-' + id)) +
-                '\')">&#9993; Send the purchaser a reminder</button>' : '')
+                '\')">&#9993; Send the purchaser a reminder</button>' : '') +
+            signedSection(e.saleId || ('plot-' + id)) +
+            '<div class="sec-h">Change the record</div>'
           : '') +
         (e ? '<button class="btn sec" onclick="undoRecord(' + id + ')">&#8634; Undo this plot</button>' : '') +
         (e && e.saleId && e.saleCount > 1
@@ -2103,6 +2145,10 @@ function fullRows(){
       sale_price: e.price || '',
       sale_date: e.date || '',
       sale_note: e.saleNote || '',
+      /* which signed copies are attached - the files themselves stay in the
+         app; open one and use "Save a copy" to keep it with the church papers */
+      signed_copies: e.buyer ? signedFor(e.saleId || ('plot-' + p.id))
+        .map(function(f){ return (f.label || 'signed') + ' ' + (f.at || '').slice(0,10); }).join('; ') : '',
       recorded_by: e.by || '',
       recorded_at: e.at || '',
       source: e.at ? 'app' : 'arcgis'
@@ -2482,6 +2528,185 @@ function copyReminder(){
     function(){ toast('Select the text and copy it'); });
 }
 
+/* ---------- the signed copy, attached to the sale ---------- */
+const SIGNED_LABELS = ['Signed by the committee', 'Signed by the purchaser', 'Signed by both'];
+
+function signedFor(saleId){
+  return Object.keys(signedFiles)
+    .map(function(k){ return Object.assign({id:k}, signedFiles[k]); })
+    .filter(function(f){ return f.saleId === saleId; })
+    .sort(function(a, b){ return (a.at || '').localeCompare(b.at || ''); });
+}
+
+function signedSection(saleId){
+  const files = signedFor(saleId);
+  const q = esc(saleId).replace(/'/g, '&#39;');
+  return '<div class="sec-h">Signed record of purchase</div>' +
+    (files.length
+      ? files.map(function(f){
+          return '<div class="kv"><span class="k">' + esc(f.label || 'Signed copy') + '<br>' +
+            '<small style="color:var(--ink3)">' + esc(fmtDate((f.at || '').slice(0,10))) +
+            (f.by ? ' · ' + esc(f.by) : '') + ' · ' + (f.type === 'application/pdf' ? 'PDF' : 'photo') +
+            '</small></span><button class="v" style="color:var(--admin);font-weight:700" ' +
+            'onclick="openSigned(\'' + esc(f.id) + '\')">Open</button></div>';
+        }).join('')
+      : '<p class="note" style="margin-top:0">No signed copy attached yet. Print the record, sign it, and ' +
+        'attach the signed PDF or a photo of the signed paper, so the church&rsquo;s copy lives here.</p>') +
+    '<button class="btn sec" onclick="attachSigned(\'' + q + '\')">&#128206; Attach a signed copy</button>';
+}
+
+function attachSigned(saleId){
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'application/pdf,image/*';
+  input.onchange = function(){
+    const file = input.files && input.files[0];
+    if(!file) return;
+    if(file.size > SIGNED_MAX){ toast('That file is over 15 MB - save it smaller and try again', 5000); return; }
+    const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+    if(!isPdf && !/^image\//.test(file.type)){ toast('A PDF or a photo, please', 4000); return; }
+    const s = allSales().find(function(x){ return x.saleId === saleId; });
+    const guess = files => files.length ? 2 : 0;
+    openPanel(
+      '<h2>Attach a signed copy</h2>' +
+      '<div style="color:var(--ink3);font-size:16px">' + esc((s && s.buyer) || '') +
+        (s ? ' · ' + esc(saleplotNames(s.plotIds).join(', ')) : '') + '</div>' +
+      '<div class="kv"><span class="k">File</span><span class="v">' + esc(file.name) + '</span></div>' +
+      '<div class="kv"><span class="k">Size</span><span class="v">' + (file.size / 1024 / 1024).toFixed(1) + ' MB</span></div>' +
+      '<label class="f" style="margin-top:12px"><span>Which copy is this?</span><select id="sgLabel">' +
+        SIGNED_LABELS.map(function(l, i){
+          return '<option' + (i === guess(signedFor(saleId)) ? ' selected' : '') + '>' + l + '</option>';
+        }).join('') + '</select></label>' +
+      '<p class="note">Kept with this sale, readable by the committee only.' +
+        (isPdf ? '' : ' A photo is saved a little smaller, still sharp enough to read and print.') + '</p>' +
+      '<button class="btn adm" id="sgSave">&#128190; Save it to this sale</button>' +
+      '<button class="btn sec" onclick="showSaleFromId(\'' + esc(saleId).replace(/'/g, '&#39;') + '\')">Cancel</button>');
+    $('#sgSave').onclick = function(){
+      $('#sgSave').disabled = true;
+      $('#sgSave').textContent = 'Saving…';
+      saveSigned(saleId, file, isPdf, $('#sgLabel').value).then(function(){
+        toast('Signed copy saved with the sale');
+        showSaleFromId(saleId);
+      }).catch(function(e){
+        toast('Could not save: ' + (e && (e.code || e.message) || 'unknown'), 6000);
+        $('#sgSave').disabled = false;
+        $('#sgSave').textContent = 'Save it to this sale';
+      });
+    };
+  };
+  input.click();
+}
+
+/* A photo straight off a phone is 3-6 MB. Drawn again at 2400 px on the long
+   side as a JPEG it is a few hundred KB and still reads and prints clearly. */
+function shrinkPhoto(file){
+  return new Promise(function(resolve, reject){
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = function(){
+      const k = Math.min(1, 2400 / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+      const g = c.getContext('2d');
+      g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+      g.drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      c.toBlob(function(b){ b ? resolve(b) : reject(new Error('could not read the photo')); }, 'image/jpeg', 0.85);
+    };
+    img.onerror = function(){ URL.revokeObjectURL(url); reject(new Error('could not read the photo')); };
+    img.src = url;
+  });
+}
+
+function blobToBase64(blob){
+  return new Promise(function(resolve, reject){
+    const r = new FileReader();
+    r.onload = function(){ resolve(String(r.result).split(',')[1] || ''); };
+    r.onerror = function(){ reject(r.error); };
+    r.readAsDataURL(blob);
+  });
+}
+
+/* Pieces first, the description last: a file only appears on the sale once
+   every piece of it is written, so a dropped connection never leaves a
+   half-file listed. */
+function saveSigned(saleId, file, isPdf, label){
+  if(!db || !cloud.user) return Promise.reject(new Error('sign in first'));
+  const ready = isPdf ? Promise.resolve(file) : shrinkPhoto(file);
+  const fileId = String(saleId).replace(/[^A-Za-z0-9_-]/g, '_') + '-' + Date.now();
+  let type, size, parts;
+  return ready.then(function(blob){
+    type = isPdf ? 'application/pdf' : 'image/jpeg';
+    size = blob.size;
+    return blobToBase64(blob);
+  }).then(function(b64){
+    parts = Math.max(1, Math.ceil(b64.length / SIGNED_PIECE));
+    let chain = Promise.resolve();
+    for(let n = 0; n < parts; n++){
+      chain = chain.then(function(){
+        return db.collection(SIGNED_PARTS).doc(fileId + '_' + n).set({
+          fileId: fileId, n: n, data: b64.slice(n * SIGNED_PIECE, (n + 1) * SIGNED_PIECE)
+        });
+      });
+    }
+    return chain;
+  }).then(function(){
+    return db.collection(SIGNED).doc(fileId).set({
+      saleId: saleId, label: label, name: file.name, type: type, size: size, parts: parts,
+      at: new Date().toISOString(), by: (cloud.user && cloud.user.email) || who() || ''
+    });
+  });
+}
+
+function loadSigned(fileId){
+  const f = signedFiles[fileId];
+  if(!f) return Promise.reject(new Error('not found'));
+  return db.collection(SIGNED_PARTS).where('fileId', '==', fileId).get().then(function(snap){
+    const got = [];
+    snap.forEach(function(d){ got.push(d.data()); });
+    got.sort(function(a, b){ return a.n - b.n; });
+    if(got.length !== f.parts) throw new Error('only ' + got.length + ' of ' + f.parts + ' pieces found');
+    const bin = atob(got.map(function(p){ return p.data; }).join(''));
+    const bytes = new Uint8Array(bin.length);
+    for(let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new Blob([bytes], {type: f.type});
+  });
+}
+
+function openSigned(fileId){
+  const f = signedFiles[fileId];
+  if(!f){ toast('That copy is no longer on the record'); return; }
+  toast('Opening…');
+  loadSigned(fileId).then(function(blob){
+    const url = URL.createObjectURL(blob);
+    const ext = f.type === 'application/pdf' ? '.pdf' : '.jpg';
+    const fname = 'Signed record - ' + (f.label || 'copy') + ' - ' + (f.at || '').slice(0,10) + ext;
+    openPanel(
+      '<h2>' + esc(f.label || 'Signed copy') + '</h2>' +
+      '<div style="color:var(--ink3);font-size:15px">' + esc(fmtDate((f.at || '').slice(0,10))) +
+        (f.by ? ' · ' + esc(f.by) : '') + ' · ' + esc(f.name || '') + '</div>' +
+      (f.type === 'application/pdf'
+        ? '<a class="btn" style="margin-top:14px" href="' + url + '" target="_blank" rel="noopener">&#128196; Open the PDF</a>'
+        : '<img src="' + url + '" alt="Signed copy" style="display:block;width:100%;margin-top:14px;border:1px solid var(--line)">') +
+      '<a class="btn sec" href="' + url + '" download="' + esc(fname) + '">&#128190; Save a copy to this device</a>' +
+      '<button class="btn sec" id="sgRemove">&#128465; Remove this copy from the sale</button>' +
+      '<button class="btn sec" onclick="showSaleFromId(\'' + esc(f.saleId).replace(/'/g, '&#39;') + '\')">Back</button>');
+    $('#sgRemove').onclick = function(){
+      if(!confirm('Remove this signed copy from the sale? It cannot be brought back from the app.')) return;
+      db.collection(SIGNED_PARTS).where('fileId', '==', fileId).get().then(function(snap){
+        return Promise.all(snap.docs.map(function(d){ return d.ref.delete(); }));
+      }).then(function(){ return db.collection(SIGNED).doc(fileId).delete(); })
+        .then(function(){ toast('Removed'); showSaleFromId(f.saleId); })
+        .catch(function(e){ toast('Could not remove: ' + (e.code || e.message), 5000); });
+    };
+  }).catch(function(e){ toast('Could not open it: ' + (e.code || e.message), 6000); });
+}
+
+/* back to the plot panel for any plot in the sale */
+function showSaleFromId(saleId){
+  const s = allSales().find(function(x){ return x.saleId === saleId; });
+  if(s && s.plotIds.length) showPlot(s.plotIds[0]); else closePanel();
+}
+
 function printLetter(saleId){
   const s = allSales().find(function(x){ return x.saleId === saleId; });
   if(!s){ toast('That sale is not in the record'); return; }
@@ -2555,7 +2780,8 @@ function salesSection(){
       : st.days + ' days left';
     return '<div class="kv"><span class="k">' + esc(s.buyer || 'unnamed') + '<br>' +
       '<small style="color:var(--ink3)">' + s.plotIds.length + ' plot' + (s.plotIds.length===1?'':'s') +
-      ' · ' + esc(fmtDate(s.date) || 'no date') + ' · ' + when + '</small></span>' +
+      ' · ' + esc(fmtDate(s.date) || 'no date') + ' · ' + when +
+      (signedFor(s.saleId).length ? ' · &#128206; signed copy' : ' · not signed yet') + '</small></span>' +
       '<button class="v" style="color:var(--admin);font-weight:700" onclick="printLetter(\'' +
       esc(s.saleId) + '\')">Letter</button></div>';
   };
@@ -2901,7 +3127,11 @@ function guideSections(){
 
   S.push({admin:true, h:'The record of purchase', p:[
     'After a sale is saved, the plot has a <b>Print the record of purchase</b> button. That prints the ' +
-    'letter for the purchaser, with a plan of exactly which plots they bought.']});
+    'letter for the purchaser, with a plan of exactly which plots they bought.',
+    'Once it is signed, keep the church&rsquo;s copy <b>with the sale</b>, not in an email: on any plot in the ' +
+    'sale, tap <b>Attach a signed copy</b> and choose the signed PDF, or take a photo of the signed paper. ' +
+    'Attach the committee&rsquo;s signed copy, then the one the purchaser signs when it comes back. ' +
+    'Each shows under <b>Signed record of purchase</b> with its date, and <b>Open</b> shows it again.']});
 
   S.push({admin:true, h:'The two deadlines', p:[
     '<b>' + POST_DAYS + ' days</b> from the date of purchase, the purchaser sets the corner markers. Mark it done ' +
