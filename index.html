@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Millfield Cemetery</title>
+<title>Millfield Church Cemetery — Wakefield, Virginia</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <!-- Pinch-zoom was blocked, so nobody could enlarge the text (review, 2026-09-15). -->
 <meta name="description" content="Millfield Baptist Church Cemetery, Wakefield, Virginia: find a grave by name, see which plots are available, and stand in the cemetery and see what is around you. Kept by the Cemetery Committee.">
@@ -527,7 +527,7 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
      Export writes the whole thing back out as plain CSV and GeoJSON - the
      copy that outlives any account, any subscription, and any one person.
    ===================================================================== */
-const BUILD = 64;
+const BUILD = 65;
 /* Shown next to the version at the foot of About, so a number on a phone can
    be checked against a date somebody actually remembers. Bump it with BUILD. */
 const BUILD_DATE = '2026-09-16';
@@ -895,6 +895,20 @@ function saleplotNames(ids){
 }
 /* Worked out, not stored, so that ticking the corner markers moves a plot
    from reserved to sold on its own and can never fall out of step. */
+/* "???" and "OCCUPIED UNKNOWN" are the survey's own placeholders for a lot
+   nobody could name. Shown as owner names they read like a slight on a family
+   (review, 2026-09-15), so the public sees nothing and the committee sees it
+   named for what it is. */
+function realOwner(v){
+  const s = (v || '').trim();
+  if(!s || /^\?+$/.test(s) || /^OCCUPIED UNKNOWN$/i.test(s) || /^UNKNOWN$/i.test(s)) return '';
+  return s;
+}
+function ownerLine(v){
+  const s = (v || '').trim();
+  return realOwner(s) ? s : (isAdmin && s ? s + ' — not recorded' : '');
+}
+
 function statusOf(p){
   const e = rec[p.id];
   if(e){
@@ -1699,6 +1713,18 @@ function init(){
     const want = z >= 20 && $('#layers input[data-l="numbers"]').checked;
     if(want && !map.hasLayer(layerNumbers)) layerNumbers.addTo(map);
     if(!want && map.hasLayer(layerNumbers)) map.removeLayer(layerNumbers);
+    /* The rows are about ten feet apart, so zoomed out their letters pile into
+       one another - the first thing a visitor saw was "LTSRQPONMLKJIHGFEDCBA"
+       (review, 2026-09-15). Show them when there is room: every other letter as
+       you come in, all of them close up, none at all from far away. */
+    const on = $('#layers input[data-l="blocks"]');
+    const step = z >= 21 ? 1 : z >= 19 ? 2 : 0;
+    layerBlocks.eachLayer(function(l){
+      const i = 'ABCDEFGHIJKLMNOPQRSTU'.indexOf(l.feature.properties.letter);
+      const show = (!on || on.checked) && step && i >= 0 && i % step === 0;
+      const el = l.getElement && l.getElement();
+      if(el) el.style.display = show ? '' : 'none';
+    });
     rebuildLotNames();
   };
   map.on('zoomend', labels);
@@ -1877,7 +1903,8 @@ function showPlot(id){
   if(!p) return;
   const e = rec[id];
   const st = statusOf(p);
-  const owner = (e && (e.buyer || e.owner)) || p.owner;
+  const owner = realOwner((e && (e.buyer || e.owner)) || p.owner);
+  const ownerSays = ownerLine((e && (e.buyer || e.owner)) || p.owner);
   openPanel(
     '<h2>' + (plotName(p) ? 'Plot ' + esc(plotName(p)) : 'Plot') + '</h2>' +
     /* The name used to be worth explaining, because only a plot sold through the
@@ -1895,7 +1922,7 @@ function showPlot(id){
         'markers are set.' + (isAdmin ? ' Speak to the committee before selling it.' : '') + '</p></div>'
       : '') +
     '<div style="margin-top:14px">' +
-      (owner      ? '<div class="kv"><span class="k">Lot owner</span><span class="v">' + esc(owner) + '</span></div>' : '') +
+      (ownerSays  ? '<div class="kv"><span class="k">Lot owner</span><span class="v">' + esc(ownerSays) + '</span></div>' : '') +
       (isAdmin && p.lotsize
         ? '<div class="kv"><span class="k">Lot size</span><span class="v">' + esc(p.lotsize) + '</span></div>' : '') +
       (e && e.name ? '<div class="kv"><span class="k">Burial recorded</span><span class="v">' + esc(e.name) + '</span></div>' : '') +
@@ -1925,7 +1952,12 @@ function showPlot(id){
           ? 'Bought and paid for, but the corner markers are not yet recorded as set. Until they are, the plot ' +
             'is reserved rather than permanently in the purchaser&rsquo;s name.'
           : st === 'sold'
-            ? 'Bought, and the corner markers are set &mdash; the plot is permanently in the owner&rsquo;s name.'
+            ? (e && e.buyer
+                ? 'Bought, and the corner markers are set &mdash; the plot is permanently in the owner&rsquo;s name.'
+                /* 132 plots read as sold from the old survey alone. The survey says the ground is
+                   spoken for; it never said anyone had checked the four markers (review, 2026-09-15). */
+                : 'Spoken for in the church&rsquo;s survey record. Whether the four corner markers are set has not ' +
+                  'been confirmed here &mdash; ask the Cemetery Committee.')
             : 'A burial is recorded in this plot.') +
     '</p>' +
     (isAdmin
@@ -1981,7 +2013,7 @@ function stoneLine(e){
    loaded any more: it held a price and is no longer exported at all. */
 function showLot(p){
   openPanel(
-    '<h2>' + esc(p.owner || 'Family lot') + '</h2>' +
+    '<h2>' + esc(ownerLine(p.owner) || 'Family lot') + '</h2>' +
     '<span class="tag reserved">Family lot</span>' +
     (isAdmin
       ? (function(){
@@ -2003,7 +2035,7 @@ function showPost(p){
     '<span class="tag" style="background:#CFEFF5;color:#08454F">Monument</span>' +
     '<div style="margin-top:14px">' +
       (p.label ? '<div class="kv"><span class="k">Label</span><span class="v">' + esc(p.label) + '</span></div>' : '') +
-      (p.owner ? '<div class="kv"><span class="k">Lot</span><span class="v">' + esc(p.owner) + '</span></div>' : '') +
+      (ownerLine(p.owner) ? '<div class="kv"><span class="k">Lot</span><span class="v">' + esc(ownerLine(p.owner)) + '</span></div>' : '') +
     '</div>' +
     '<p class="note">The physical monuments the cemetery layout was measured from.</p>' +
     '<button class="btn sec" onclick="closePanel()">Close</button>');
@@ -2017,7 +2049,7 @@ function formBurial(id){
   openPanel(
     '<h2>Record a burial</h2>' +
     '<div style="color:var(--ink3);font-size:16px">' + (plotName(p) ? 'Plot ' + esc(plotName(p)) : 'Plot') +
-      (p.owner ? ' · ' + esc(p.owner) : '') + '</div>' +
+      (ownerLine(p.owner) ? ' · ' + esc(ownerLine(p.owner)) : '') + '</div>' +
     '<div class="sec-h">Who is buried here</div>' +
     '<label class="f"><span>Full name</span><input type="text" id="eName" value="' + esc(e.name||'') + '" placeholder="As it appears on the stone"></label>' +
     dateFields('eBirth', 'Born', e.birth) +
@@ -2303,7 +2335,7 @@ function rebuildLotNames(){
   }
   const view = map.getBounds();
   D.lots.features.forEach(function(f){
-    if(!f.properties.owner) return;
+    if(!realOwner(f.properties.owner)) return;
     let n = -90, s = 90, e = -180, w = 180;
     f.geometry.coordinates[0].forEach(function(p){
       if(p[1] > n) n = p[1]; if(p[1] < s) s = p[1];
@@ -2770,7 +2802,10 @@ function letterHTML(s, sig){
     '<p class="key"><b>Filled squares</b> are the plots purchased. Surrounding plots are shown for bearings, ' +
       'each named by its row letter and number, such as F20; a large letter marks the head of a row. Drawn from the church&rsquo;s own ' +
       'layout, turned so the rows run straight up the page; the compass shows true north.</p>' +
-    '<p class="caveat">' + SURVEY_CAVEAT + '</p>' +
+    /* The full caveat is on the letter itself; printing all of it again here
+       read as a second warning (review, 2026-09-15). One line, pointing back. */
+    '<p class="caveat">This plan shows the church&rsquo;s own layout, not a boundary survey &mdash; see the ' +
+      'note on the first page. A plot is confirmed when the purchaser sets the four corner markers.</p>' +
     signBlock(sig) +
   '</div>' +
   '</body></html>';
@@ -4313,7 +4348,7 @@ function wire(){
        family's own ground (review, 2026-09-15). A family lot matches its owner;
        a sale matches the purchaser, and shows the first plot of the sale. */
     const lots = D.lots.features.filter(function(f){
-        const have = words(f.properties.owner).join(' ');
+        const have = words(realOwner(f.properties.owner)).join(' ');
         return want.length && want.every(function(w){ return have.indexOf(w) !== -1; });
       }).slice(0,10).map(function(f){
         const r = f.geometry.coordinates[0];
@@ -4337,7 +4372,7 @@ function wire(){
     box.innerHTML = hits.length
       ? hits.map(function(h,i){
           if(h.lot){
-            return '<button data-i="' + i + '"><div class="nm">' + esc(h.lot.owner) + '</div>' +
+            return '<button data-i="' + i + '"><div class="nm">' + esc(ownerLine(h.lot.owner) || 'Family lot') + '</div>' +
               '<div class="dt">Family lot</div></button>';
           }
           if(h.sale){
@@ -4350,7 +4385,7 @@ function wire(){
             const e  = rec[h.plot.id];
             return '<button data-i="' + i + '"><div class="nm">Plot ' + esc(plotName(h.plot)) + '</div>' +
               '<div class="dt">' + LABEL[st] + (e && e.buyer ? ' &middot; ' + esc(e.buyer)
-                                              : h.plot.owner ? ' &middot; ' + esc(h.plot.owner) : '') +
+                                              : ownerLine(h.plot.owner) ? ' &middot; ' + esc(ownerLine(h.plot.owner)) : '') +
               '</div></button>';
           }
           return '<button data-i="' + i + '"><div class="nm">' + esc(h.who.name) +
