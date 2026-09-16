@@ -6,8 +6,9 @@ A map of Millfield Baptist Church cemetery in Wakefield, Virginia, drawn from th
 geodatabase. Anyone can use it to find a grave or see which plots are available. The Cemetery Committee signs in
 to record burials and sales, print a record of purchase, and keep the ledger.
 
-Published, but **deliberately not listed in search engines** — the congregation is to be asked before the burial
-names become findable by anyone searching for them. That is one `<meta name="robots">` line in `index.html`.
+Published, and the church has approved a link from its website and a search-engine listing. **Not listed yet**:
+one `<meta name="robots">` line in `index.html` still says noindex, and comes out when the pre-release findings are
+settled. Reviews and findings live with the committee papers, not in this repository.
 
 ---
 
@@ -15,13 +16,13 @@ names become findable by anyone searching for them. That is one `<meta name="rob
 
 | | |
 |---|---|
-| **564 plots** | green *available* · amber *reserved* · blue *sold* · grey *occupied* |
-| **113 burials** | name, birth, death, age, veteran service |
+| **564 plots** | green *available* · amber *reserved* · blue *sold* · grey *occupied*; 256 are available to sell |
+| **113 burials** | name, birth, death, age, veteran service, and the plot each lies in |
 | **107 Find a Grave links** | tap through to the memorial |
 | **57 family lots** | owner and size, named on the map once you zoom in |
 | **69 plots over the property line** | outlined in broken red — they may not exist as drawn |
 
-Plus search by any words of a name, or by a plot such as F20, a filter for available plots, veterans, and your own position on the map.
+Plus search by any words of a name, by an owner, or by a plot such as F20; filters for available plots and veterans; and your own position on the map.
 
 ## The four states of a plot
 
@@ -53,11 +54,13 @@ projected copy's OID.
 
 ## Public and private
 
-Public, because it is carved on a stone or plain to see: the name, dates, veteran service, plot number, whether a
-plot is spoken for, the owner's name, whether the markers and headstone are in place.
+Public, because it is carved on a stone or plain to see: the name, dates, veteran service, plot number, the Find a
+Grave link, whether a plot is spoken for, the owner's name, and a family lot's size.
 
-Committee only, refused by the server to anyone else: addresses, email, telephone, price, date of purchase, who
-may be buried there, and which member recorded it. These live in `cemeteryPrivate`, which returns 403 to the public.
+Committee only, refused by the server to anyone else: addresses, email, telephone, price, date of purchase, who may
+be buried there, which member recorded it, the burial note and both deadline clocks (`cemeteryPrivate`). The
+**signed records of purchase** (`cemeterySigned`), each member’s **saved signature** (`cemeterySignatures`, readable
+by its owner alone) and the **committee roll** are refused to everyone else as well.
 
 ## Row letters
 
@@ -72,6 +75,13 @@ an aisle in the ArcGIS Lines layer. Run it after every export.
 
 An earlier attempt gave each plot the nearest label point and was wrong on 263 of 565 plots while passing its only
 check. This is not that. What the committee types on the sale form still overrides the letter.
+
+## Signing a record of purchase
+
+The committee prints, signs and sends the record of purchase without leaving the app: the recorder's saved
+signature (or one drawn on screen) goes on both pages, the app builds the PDF, keeps it with the sale and hands it
+to the phone's own share sheet. A copy signed elsewhere - a PDF or a photo of the signed paper - can be attached to
+the sale too. Signed copies are committee-only, and come out with **Export the whole record**.
 
 ## The property line
 

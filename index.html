@@ -3,7 +3,14 @@
 <head>
 <meta charset="utf-8">
 <title>Millfield Cemetery</title>
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- Pinch-zoom was blocked, so nobody could enlarge the text (review, 2026-09-15). -->
+<meta name="description" content="Millfield Baptist Church Cemetery, Wakefield, Virginia: find a grave by name, see which plots are available, and stand in the cemetery and see what is around you. Kept by the Cemetery Committee.">
+<meta property="og:title" content="Millfield Church Cemetery map">
+<meta property="og:description" content="Find a grave by name and see which plots are available at Millfield Baptist Church Cemetery, Wakefield, Virginia.">
+<meta property="og:image" content="https://rfsmfd.github.io/Millfield_Cemetery/img/church.jpg">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://rfsmfd.github.io/Millfield_Cemetery/">
 <!-- Not listed in search engines, by the committee's decision (2026-09-03):
      the congregation is to be asked before the burial names become findable
      by anyone searching for them. The map itself is public - anybody with the
@@ -74,7 +81,7 @@ button{background:none;border:0;cursor:pointer}
 .subrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 /* Everything the map can do, in words. The icons down the side are quicker
    once you know them; this is for the members who open it twice a year. */
-#btnMenu{font-size:13px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;
+#btnMenu{font-size:14px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;
   background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:7px 12px;
   min-height:34px;color:var(--ink2)}
 #menu{position:absolute;left:14px;z-index:850;display:none;min-width:270px;max-width:calc(100vw - 28px);
@@ -507,7 +514,7 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
      Export writes the whole thing back out as plain CSV and GeoJSON - the
      copy that outlives any account, any subscription, and any one person.
    ===================================================================== */
-const BUILD = 62;
+const BUILD = 63;
 /* Shown next to the version at the foot of About, so a number on a phone can
    be checked against a date somebody actually remembers. Bump it with BUILD. */
 const BUILD_DATE = '2026-09-15';
@@ -1334,6 +1341,7 @@ function pushDeviceOnly(){
 }
 
 function cloudLabel(){
+  if(!navigator.onLine) return 'no signal';
   if(!cloud.ready) return 'device only';
   if(!cloud.live)  return 'cloud offline';
   return 'cloud';
@@ -1516,19 +1524,27 @@ function plotStyle(p){
           opacity: own ? 1 : .55, fillColor: COLOR[st], fillOpacity:.62, dashArray:null};
 }
 
+/* Available means available to sell. A plot drawn over the property line may not
+   exist as drawn, so it is NOT counted or offered as available (Buddy,
+   2026-09-15, after the review found "325 available" included all 69 of them). */
+function availableClear(p){ return statusOf(p) === 'available' && !p.overLine; }
+
 function refreshCounts(){
   const c = {occupied:0, sold:0, reserved:0, available:0};
   D.plots.features.forEach(function(f){ c[statusOf(f.properties)]++; });
+  const clear = D.plots.features.filter(f => availableClear(f.properties)).length;
+  const over  = c.available - clear;
   const waiting = deviceOnlyIds().length;
   // graves from the survey, plus every burial recorded through the app since
   const graves = D.burials.features.length + appList.length;
   const vets   = D.burials.features.filter(f => f.properties.vet).length
                + appList.filter(b => b.vet).length;
   $('#counts').textContent =
-    graves + ' burials · ' + c.available + ' plots available · ' + cloudLabel()
+    graves + ' burials · ' + clear + ' plots available'
+    + (over ? ' · ' + over + ' over the line' : '') + ' · ' + cloudLabel()
     + (waiting ? ' · ' + waiting + ' waiting to send' : '');
   $('#cAll').textContent    = D.plots.features.length;
-  $('#cAvail').textContent  = c.available;
+  $('#cAvail').textContent  = clear;
   $('#cGraves').textContent = graves;
   $('#cVets').textContent   = vets;
 }
@@ -1607,8 +1623,10 @@ function wireDrag(){
 }
 
 function showBurial(p){
+  /* The badge above already says Veteran, so the row names the service instead
+     of saying "Veteran: Yes" underneath it (review, 2026-09-15). */
   const rows = [['Born', fmtDate(p.birth)], ['Died', fmtDate(p.death)], ['Age', p.age],
-                ['Veteran', p.vet ? (p.conflict ? 'Yes — ' + p.conflict : 'Yes') : null]].filter(r => r[1]);
+                ['Served', p.vet ? (p.conflict || null) : null]].filter(r => r[1]);
   openPanel(
     '<h2>' + esc(p.name || 'Unnamed') + '</h2>' +
     '<div style="color:var(--ink3);font-size:16px">' + esc(years(p.birth,p.death)) + '</div>' +
@@ -1662,15 +1680,19 @@ function showPlot(id){
   const owner = (e && (e.buyer || e.owner)) || p.owner;
   openPanel(
     '<h2>' + (plotName(p) ? 'Plot ' + esc(plotName(p)) : 'Plot') + '</h2>' +
-    (rec[id] && rec[id].plotNo
-      ? '<div style="color:var(--ink3);font-size:15px">Plot number set by the committee</div>' : '') +
+    /* The name used to be worth explaining, because only a plot sold through the
+       app had a letter. Every plot carries its row letter now, so the line said
+       nothing (review, 2026-09-15) - it is kept for the committee only, where it
+       still means "typed on the sale form, not worked out from the rows". */
+    (isAdmin && rec[id] && rec[id].plotNo
+      ? '<div style="color:var(--ink3);font-size:15px">Plot number typed on the sale form</div>' : '') +
     '<span class="tag ' + st + '">' + LABEL[st] + '</span>' +
     (deviceOnly(id) ? ' <span class="tag device">On this device only</span>' : '') +
     (p.overLine
       ? '<div class="overdue" style="margin-top:12px"><b>This plot is drawn over the property line.</b>' +
         '<p class="note" style="margin-top:6px">It may not exist as drawn. The cemetery layout has never been ' +
         'surveyed against the church&rsquo;s property line, so a plot here is only proved when the corner ' +
-        'markers are set. Speak to the committee before selling it.</p></div>'
+        'markers are set.' + (isAdmin ? ' Speak to the committee before selling it.' : '') + '</p></div>'
       : '') +
     '<div style="margin-top:14px">' +
       (owner      ? '<div class="kv"><span class="k">Lot owner</span><span class="v">' + esc(owner) + '</span></div>' : '') +
@@ -1679,8 +1701,10 @@ function showPlot(id){
       (e && e.name ? '<div class="kv"><span class="k">Burial recorded</span><span class="v">' + esc(e.name) + '</span></div>' : '') +
       (e && e.date ? '<div class="kv"><span class="k">Date of sale</span><span class="v">' + esc(fmtDate(e.date)) + '</span></div>' : '') +
       (e && e.saleCount > 1
-        ? '<div class="kv"><span class="k">Sold as</span><span class="v">' + esc(saleSizeName(e.saleCount)) +
-          ' (' + e.saleCount + ' plots)</span></div>' : '') +
+        ? '<div class="kv"><span class="k">Sold as</span><span class="v">' +
+          esc(saleSizeName(e.saleCount) === e.saleCount + ' plots'
+              ? e.saleCount + ' plots together'
+              : saleSizeName(e.saleCount) + ' (' + e.saleCount + ' plots)') + '</span></div>' : '') +
       (e && e.price ? '<div class="kv"><span class="k">Paid</span><span class="v">$' + esc(e.price) + '</span></div>' : '') +
       (e && e.people ? '<div class="kv"><span class="k">May be buried here</span><span class="v">' +
         esc(e.people).replace(/\n/g, '<br>') + '</span></div>' : '') +
@@ -1693,7 +1717,10 @@ function showPlot(id){
     '</div>' +
     '<p class="note">' +
       (st === 'available'
-        ? 'Not part of any family lot. Plots are available to church members — speak to the Cemetery Committee.'
+        ? (p.overLine
+            ? 'Not part of any family lot, and not counted as available: this ground has to be proved before it ' +
+              'can be sold. Speak to the Cemetery Committee.'
+            : 'Not part of any family lot. Plots are available to church members — speak to the Cemetery Committee.')
         : st === 'reserved'
           ? 'Bought and paid for, but the corner markers are not yet recorded as set. Until they are, the plot ' +
             'is reserved rather than permanently in the purchaser&rsquo;s name.'
@@ -1802,7 +1829,14 @@ function formBurial(id){
     '<label class="f"><span>Veteran</span><select id="eVet"><option value="">No</option>' +
       '<option value="YES"' + (e.vet==='YES'?' selected':'') + '>Yes</option></select></label>' +
     '<label class="f"><span>Conflict, if any</span><input type="text" id="eConflict" value="' + esc(e.conflict||'') + '"></label>' +
-    '<label class="f"><span>Notes</span><textarea id="eNote" placeholder="Find a Grave link, or anything worth recording">' + esc(e.note||'') + '</textarea></label>' +
+    /* The public Find a Grave button reads `link`, which the form could not set,
+       so a burial recorded here could never show one (review, 2026-09-15). The
+       Notes box is committee-only and was never the place for it. */
+    '<label class="f"><span>Find a Grave link</span><input type="url" id="eLink" value="' + esc(e.link||'') +
+      '" placeholder="https://www.findagrave.com/memorial/…"></label>' +
+    '<small class="hint" style="margin:-6px 0 12px">Shown to everyone as a button on the grave, like the ' +
+      'surveyed burials. Leave it empty if there is no memorial page.</small>' +
+    '<label class="f"><span>Notes (committee only)</span><textarea id="eNote" placeholder="Anything worth recording">' + esc(e.note||'') + '</textarea></label>' +
     '<div class="sec-h">Headstone &mdash; ' + STONE_DAYS + ' days</div>' +
     '<p class="note" style="margin-top:0">Within ' + STONE_DAYS + ' days of the burial the family must mark the ' +
       'grave with a permanent marker giving the full name, date of birth and date of death.</p>' +
@@ -1835,7 +1869,9 @@ function saveBurial(id){
     const y = +d.slice(0,4) - +b.slice(0,4);
     if(y >= 0 && y < 130) age = String(y);
   }
-  cloudWrite(id, {status:'occupied', name:name, age:age, birth:b, death:d,
+  const link = $('#eLink').value.trim();
+  if(link && !/^https?:\/\//i.test(link)){ toast('A Find a Grave link should start with https://', 4500); return; }
+  cloudWrite(id, {status:'occupied', name:name, age:age, birth:b, death:d, link:link,
     vet:$('#eVet').value, conflict:$('#eConflict').value.trim(), note:$('#eNote').value.trim(),
     buried:$('#eBuried').value, stoneIn:$('#eStoneIn').checked, stoneDate:$('#eStoneDate').value,
     kin:$('#eKin').value.trim(), kinEmail:$('#eKinEmail').value.trim(), kinPhone:$('#eKinPhone').value.trim(),
@@ -1914,16 +1950,19 @@ function formSale(){
         : '';
     })() +
     '<button class="btn sec" onclick="startPicking(null)">&#128205; Change which plots</button>' +
-    /* The survey knows the lot number; only the committee knows the section
-       letter. So the number is handed over as a plain box with the lot number
-       already in it, and whatever is typed here is what the record keeps and
-       what prints on the letter. */
+    /* Every plot now carries its row letter, so each box arrives filled in with
+       the map's own name. It stays a plain box: whatever is typed here is what
+       the record keeps and what prints on the letter (the old note told the
+       committee to type the letter themselves - review, 2026-09-15). */
     '<div class="sec-h">Plot numbers</div>' +
-    '<p class="note" style="margin-top:0">Put the section letter in front of each number &mdash; ' +
-      '<b>F20</b> rather than <b>20</b>. What you type here is what goes on the letter.</p>' +
-    ids.map(function(i){
+    '<p class="note" style="margin-top:0">Already filled in from the map, row letter and number. ' +
+      'Change one only if the committee&rsquo;s own record says different &mdash; what is here is what goes ' +
+      'on the letter.</p>' +
+    ids.slice().sort(function(a, b){
+      return plotName(plotById(a)).localeCompare(plotName(plotById(b)), undefined, {numeric: true});
+    }).map(function(i){
       const pp = plotById(i);
-      return '<label class="f"><span>Lot ' + esc(pp.plot || '?') + '</span>' +
+      return '<label class="f"><span>Plot ' + esc(plotName(pp) || pp.plot || '?') + '</span>' +
         '<input type="text" id="pn' + i + '" value="' + esc(plotName(pp)) + '"></label>';
     }).join('') +
     '<div class="sec-h">Purchaser</div>' +
@@ -2013,9 +2052,16 @@ function undoRecord(id){ cloudClear(id); closePanel(); toast('Change removed'); 
 
 function undoSale(saleId){
   const ids = Object.keys(rec).filter(function(id){ return rec[id].saleId === saleId; });
+  /* Signed records are the church's papers: undoing the sale does not throw them
+     away, but nobody should find that out by accident (review, 2026-09-15). */
+  const signed = signedFor(saleId);
+  if(signed.length && !confirm('This sale has ' + signed.length + ' signed record' +
+      (signed.length === 1 ? '' : 's') + ' of purchase attached.\n\nReleasing the plots does not delete ' +
+      (signed.length === 1 ? 'it' : 'them') + ' - ' + (signed.length === 1 ? 'it stays' : 'they stay') +
+      ' in the record until removed one by one.\n\nRelease the plots anyway?')) return;
   ids.forEach(function(id){ cloudClear(id); });
   closePanel();
-  toast(ids.length + ' plots released');
+  toast(ids.length + ' plots released' + (signed.length ? ' — the signed record is still kept' : ''));
 }
 
 /* ---- the lot boundary around a purchase ----
@@ -2199,7 +2245,31 @@ function exportAll(){
     download('millfield-cemetery-' + stamp + '.geojson', JSON.stringify(gj), 'application/geo+json');
   }, 400);
 
-  toast('Full record exported — CSV and GeoJSON');
+  /* The signed records of purchase come too. The export used only to LIST them,
+     so the church's copy of a signed letter lived nowhere but the database
+     (review, 2026-09-15). */
+  const files = Object.keys(signedFiles);
+  if(!files.length){ toast('Full record exported — CSV and GeoJSON'); return; }
+  toast('Full record exported — now saving ' + files.length + ' signed record' + (files.length === 1 ? '' : 's') + '…', 5000);
+  let n = 0;
+  files.reduce(function(chain, id){
+    return chain.then(function(){
+      const f = signedFiles[id];
+      return loadSigned(id).then(function(blob){
+        const sale = allSales().find(function(s){ return s.saleId === f.saleId; });
+        const who = ((sale && sale.buyer) || 'sale').replace(/[\\/:*?"<>|]+/g, ' ').trim();
+        const ext = f.type === 'application/pdf' ? '.pdf' : '.jpg';
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'millfield-signed-' + who + ' - ' + (f.label || 'signed') + ' - ' + (f.at || '').slice(0,10) + ext;
+        document.body.appendChild(a); a.click(); a.remove();
+        n++;
+        return new Promise(function(r){ setTimeout(r, 700); });   // browsers refuse a burst
+      }).catch(function(){});
+    });
+  }, Promise.resolve()).then(function(){
+    toast('Full record exported — CSV, GeoJSON and ' + n + ' signed record' + (n === 1 ? '' : 's'), 6000);
+  });
 }
 function exportChanges(){
   const rows = fullRows().filter(r => rec[r.plot_id]);
@@ -2283,12 +2353,37 @@ function plotDiagram(ids, opts){
   });
   const STRIP = 5.4;                                  // the scale and compass strip, metres
   const pad = opts.pad || 12;
+  const saleTop = top, saleBot = bot, saleLft = lft, saleRgt = rgt;   // the purchased ground itself
   top += pad; bot -= pad; rgt += pad; lft -= pad;
   // widen to the shape of the space it prints in, so the page shows more rows
   // either side rather than blank margin
   const aspect = opts.aspect || 1.16;
   const wantW = aspect * (top - bot + STRIP);
   if(rgt - lft < wantW){ const more = (wantW - (rgt - lft)) / 2; rgt += more; lft -= more; }
+
+  /* Slide the view back over the cemetery rather than out into the field. A sale
+     at the far end of a row (M37-M41, O42) used to leave half the plan empty
+     while the rows below it were cut off (review, 2026-09-15). The purchased
+     plots always stay inside, with room to spare. */
+  const keep = 3;                                    // metres of clear ground kept round the sale
+  let allT = -1e9, allB = 1e9, allR = -1e9, allL = 1e9;
+  D.plots.features.forEach(function(f){ f.geometry.coordinates[0].forEach(function(p){
+    const q = turn(p);
+    if(q[1] > allT) allT = q[1]; if(q[1] < allB) allB = q[1];
+    if(q[0] > allR) allR = q[0]; if(q[0] < allL) allL = q[0];
+  }); });
+  const slide = function(lo, hi, gLo, gHi, keepLo, keepHi){
+    let d = 0;
+    if(hi > gHi && lo > gLo) d = -Math.min(hi - gHi, lo - gLo);        // too far past the top: come down
+    else if(lo < gLo && hi < gHi) d = Math.min(gLo - lo, gHi - hi);    // too far past the bottom: go up
+    if(d > 0) d = Math.min(d, keepLo - lo - keep);                      // never cover the sale itself
+    if(d < 0) d = Math.max(d, keepHi - hi + keep);
+    return d || 0;
+  };
+  const dy = slide(bot, top, allB, allT, saleBot, saleTop);
+  if(dy){ top += dy; bot += dy; }
+  const dx = slide(lft, rgt, allL, allR, saleLft, saleRgt);
+  if(dx){ rgt += dx; lft += dx; }
 
   const W = rgt - lft, H = top - bot;                // real size, in metres
   const X = q => q[0] - lft, Y = q => top - q[1];
@@ -3469,8 +3564,10 @@ function guideSections(){
   S.push({h:'The rest of the map', p:[
     'A <b>dark dot</b> is a grave. A <b>dark red dot</b> is a veteran.',
     'A <b>pale outline</b> with a family name written across it is a family lot.',
-    'The <b>large letters</b> are the sections. <b>Plot numbers</b> appear once you zoom in far enough.',
-    'Tap <b>MENU</b> &rarr; <b>Choose what to show</b> to turn any of these off.']});
+    'The <b>large letters</b> mark the rows &mdash; each stands at the start of its row, and a plot is named by ' +
+    'that letter and its number, like <b>F20</b>. <b>Plot numbers</b> appear once you zoom in far enough.',
+    'Tap <b>MENU</b> &rarr; <b>Choose what to show</b> to turn the graves, the family lots or the plot numbers ' +
+    'off. (The row letters stay.)']});
 
   S.push({h:'When two graves sit on top of each other', p:[
     'A few family members are buried less than a foot apart. Zoomed out, their dots overlap and only the ' +
@@ -3518,13 +3615,16 @@ function guideSections(){
   S.push({admin:true, h:'Recording a burial', p:[
     'Tap the plot on the map, then <b>Record a burial here</b>. Fill in the name as it appears on the ' +
     'stone. Saving marks the plot occupied.',
+    'If the person has a <b>Find a Grave</b> page, paste its address into the <b>Find a Grave link</b> box &mdash; ' +
+    'it becomes the button everyone sees on that grave. <b>Notes</b> are committee-only and nobody else sees them.',
     'To correct one, tap the grave and choose <b>Correct this record</b>.']});
 
   S.push({admin:true, h:'Recording a sale', p:[
     'Tap any plot in the sale, then <b>Record a sale &mdash; pick the plots</b>, and tap every plot the ' +
     'family is buying. One sale can cover several plots.',
-    '<b>Type the plot number yourself</b> on the form &mdash; the letter and the number, as the committee ' +
-    'writes it. The map cannot work the section letter out and must not guess.',
+    'The plot numbers arrive <b>already filled in</b> &mdash; row letter and number, as the map has them. ' +
+    'Change one only if the committee&rsquo;s own record says different; what is in those boxes is what prints ' +
+    'on the letter.',
     'To change a sale later, open any plot in it and choose <b>Change this sale</b>. That keeps it as one ' +
     'sale rather than splitting it in two.']});
 
@@ -3545,7 +3645,8 @@ function guideSections(){
     'with <b>Record the corner markers as set</b>.',
     '<b>' + STONE_DAYS + ' days</b> from a burial, the family sets the headstone. Mark it done with ' +
     '<b>Record the headstone as set</b>.',
-    'Both are watched automatically and a reminder is emailed each morning when one is due. ' +
+    'Both are watched every morning. When one runs out, the committee &mdash; and the purchaser or family, if an ' +
+    'email address is on the record &mdash; are emailed once, and again every month until it is marked done. ' +
     '<b>Send the purchaser a reminder</b> and <b>Remind the family</b> write the message for you.']});
 
   S.push({admin:true, h:'The ledger', p:[
@@ -3643,12 +3744,21 @@ function showAbout(){
     '<p class="note" style="margin-top:0">Record burials and sales, print a record of purchase, keep the ledger, ' +
       'and track the ' + POST_DAYS + ' days for corner markers and the ' + STONE_DAYS + ' days for a headstone. ' +
       'Purchasers&rsquo; addresses, telephone numbers and prices are kept private and need a sign-in.</p>' +
+    /* Somebody arriving from a search or a link had no way to find the church:
+       only a telephone number (review, 2026-09-15). */
+    '<div class="sec-h">Where it is</div>' +
+    '<p class="note" style="margin-top:0">' + CHURCH.name.replace('COMMITTEE', '').trim() + '<br>' +
+      esc(CHURCH.addr) + '<br>' + esc(CHURCH.town) + '<br>' + esc(CHURCH.tel) + '</p>' +
+    '<a class="btn sec" href="https://www.google.com/maps/search/?api=1&query=' +
+      encodeURIComponent(CHURCH.addr + ', ' + CHURCH.town) + '" target="_blank" rel="noopener">&#128506; ' +
+      'Directions to the church</a>' +
     '<div class="sec-h">The plot positions</div>' +
     '<p class="note" style="margin-top:0">' + SURVEY_CAVEAT + '</p>' +
     '<div class="sec-h">Keeping it</div>' +
     '<p class="note" style="margin-top:0">The record lives in the cloud, free, and any committee member can add ' +
       'the next one. <b>Export the whole record</b> writes it all out as plain files that Excel and any mapping ' +
-      'program can read, with no account and no subscription &mdash; keep the newest one with the church papers.</p>' +
+      'program can read, with no account and no subscription &mdash; keep the newest one with the church papers, ' +
+      'together with any signed records of purchase it saves alongside them.</p>' +
     '<p class="note">Millfield Baptist Church Cemetery Committee &middot; ' + CHURCH.tel + '</p>' +
     /* The version, the date it went out, and - the part that matters when
        something has gone wrong - whether this copy has actually managed to ask
@@ -3856,19 +3966,29 @@ function adminOff(quiet){
 }
 
 /* ---------- filters ---------- */
+/* A dot faded out must not answer a tap either: hidden graves used to be
+   invisible and still open their panel (review, 2026-09-15). */
+function showDot(l, show){
+  l.setStyle({opacity: show ? 1 : 0, fillOpacity: show ? 1 : 0});
+  if(l._path) l._path.style.pointerEvents = show ? '' : 'none';
+}
+
 function applyFilter(){
   layerPlots.eachLayer(function(l){
-    const s = plotStyle(l.feature.properties);
-    const show = filter !== 'available' || statusOf(l.feature.properties) === 'available';
+    const p = l.feature.properties, s = plotStyle(p);
+    // Graves: the plots step back so the burials stand out. Available: only the
+    // ground that can actually be sold.
+    const show = filter === 'available' ? availableClear(p)
+               : filter === 'graves'    ? false
+               : true;
     l.setStyle({fillOpacity: show ? s.fillOpacity : .05, opacity: show ? s.opacity : .12});
+    if(l._path) l._path.style.pointerEvents = (filter === 'graves') ? 'none' : '';
   });
   layerBurials.eachLayer(function(l){
-    const show = filter === 'veterans' ? !!l.feature.properties.vet : (filter !== 'available');
-    l.setStyle({opacity: show ? 1 : 0, fillOpacity: show ? 1 : 0});
+    showDot(l, filter === 'veterans' ? !!l.feature.properties.vet : (filter !== 'available'));
   });
   layerAppBurials.getLayers().forEach(function(l, i){
-    const show = filter === 'veterans' ? !!(appList[i] && appList[i].vet) : (filter !== 'available');
-    l.setStyle({opacity: show ? 1 : 0, fillOpacity: show ? 1 : 0});
+    showDot(l, filter === 'veterans' ? !!(appList[i] && appList[i].vet) : (filter !== 'available'));
   });
 }
 
@@ -3961,9 +4081,42 @@ function wire(){
       }).slice(0,25).map(function(f){
         return {plot:f.properties, ll:plotCenter(f)};
       });
-    const hits = plots.concat(people).slice(0,40);
+    /* Owners, too. "Cutright" and "Cornwell" used to find graves only, never the
+       family's own ground (review, 2026-09-15). A family lot matches its owner;
+       a sale matches the purchaser, and shows the first plot of the sale. */
+    const lots = D.lots.features.filter(function(f){
+        const have = words(f.properties.owner).join(' ');
+        return want.length && want.every(function(w){ return have.indexOf(w) !== -1; });
+      }).slice(0,10).map(function(f){
+        const r = f.geometry.coordinates[0];
+        let la = 0, lo = 0; r.slice(0,-1).forEach(function(c){ lo += c[0]; la += c[1]; });
+        return {lot:f.properties, ll:[la/(r.length-1), lo/(r.length-1)]};
+      });
+    const sales = allSales().filter(function(s){
+        const have = words(s.buyer).join(' ');
+        return want.length && want.every(function(w){ return have.indexOf(w) !== -1; });
+      }).slice(0,10).map(function(s){
+        const f = D.plots.features.find(function(x){ return x.properties.id === s.plotIds[0]; });
+        return f ? {sale:s, plot:f.properties, ll:plotCenter(f)} : null;
+      }).filter(Boolean);
+    const seenPlot = {};
+    const hits = plots.concat(sales.filter(function(s){ return !plots.some(function(p){ return p.plot.id === s.plot.id; }); }))
+      .concat(lots).concat(people).filter(function(h){
+        if(!h.plot) return true;
+        if(seenPlot[h.plot.id]) return false;
+        seenPlot[h.plot.id] = 1; return true;
+      }).slice(0,40);
     box.innerHTML = hits.length
       ? hits.map(function(h,i){
+          if(h.lot){
+            return '<button data-i="' + i + '"><div class="nm">' + esc(h.lot.owner) + '</div>' +
+              '<div class="dt">Family lot</div></button>';
+          }
+          if(h.sale){
+            return '<button data-i="' + i + '"><div class="nm">' + esc(h.sale.buyer) + '</div>' +
+              '<div class="dt">' + h.sale.plotIds.length + ' plot' + (h.sale.plotIds.length === 1 ? '' : 's') +
+              ' &middot; ' + esc(saleplotNames(h.sale.plotIds).join(', ')) + '</div></button>';
+          }
           if(h.plot){
             const st = statusOf(h.plot);
             const e  = rec[h.plot.id];
@@ -3975,14 +4128,14 @@ function wire(){
           return '<button data-i="' + i + '"><div class="nm">' + esc(h.who.name) +
             '</div><div class="dt">' + esc(years(h.who.birth, h.who.death)) + '</div></button>';
         }).join('')
-      : '<div class="empty">Nothing found by that name or plot number.</div>';
+      : '<div class="empty">Nothing found by that name, owner or plot number.</div>';
     box.classList.add('on');
     box.querySelectorAll('button').forEach(function(b){
       b.onclick = function(){
         const h = hits[+b.dataset.i];
-        map.setView(h.ll, 21);
+        map.setView(h.ll, h.lot ? 20 : 21);
         box.classList.remove('on'); $('#search').classList.remove('on'); $('#q').value = '';
-        if(h.plot) showPlot(h.plot.id); else showBurial(h.who);
+        if(h.lot) showLot(h.lot); else if(h.plot) showPlot(h.plot.id); else showBurial(h.who);
       };
     });
   };
