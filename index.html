@@ -266,6 +266,18 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
   padding:13px 16px;background:var(--admin);color:#FBF3E7;
   font-size:16px;font-weight:680;text-align:center;box-shadow:0 4px 16px rgba(30,26,18,.3)}
 #updatebar.on{display:block}
+/* the same bar, green, for "you are at the cemetery - here is the check list" */
+#checkbar{position:fixed;left:0;right:0;top:0;z-index:1499;display:none;
+  padding:13px 16px;background:#2F6B37;color:#F4ECD9;
+  font-size:16px;font-weight:680;text-align:center;box-shadow:0 4px 16px rgba(30,26,18,.3)}
+#checkbar.on{display:block}
+.chk{display:flex;gap:10px;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--sunk)}
+.chk input[type=checkbox]{width:24px;height:24px;margin-top:2px;flex:0 0 24px}
+.chk .cb{flex:1}
+.chk .cw{color:var(--ink3);font-size:14.5px;margin:2px 0 6px}
+.chk.done .ct{text-decoration:line-through;color:var(--ink3)}
+.chk textarea{width:100%;min-height:52px;font:inherit;font-size:15px;padding:7px 9px;border:1px solid var(--line);
+  border-radius:9px;background:#FBF6EA;color:inherit}
 
 /* ---- the opening screen ----
    Quiet on purpose. No spinner, no bounce: it is a cemetery. The photograph
@@ -484,6 +496,7 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
 </div>
 
 <button id="updatebar" onclick="location.reload()">&#8635; New version ready &mdash; tap to update</button>
+<button id="checkbar" onclick="showChecklist()">&#128203; You are at the cemetery &mdash; <span id="checkbarn"></span></button>
 
 <div id="menu"></div>
 
@@ -514,10 +527,10 @@ table.ledger .src{font-size:12px;color:var(--ink3)}
      Export writes the whole thing back out as plain CSV and GeoJSON - the
      copy that outlives any account, any subscription, and any one person.
    ===================================================================== */
-const BUILD = 63;
+const BUILD = 64;
 /* Shown next to the version at the foot of About, so a number on a phone can
    be checked against a date somebody actually remembers. Bump it with BUILD. */
-const BUILD_DATE = '2026-09-15';
+const BUILD_DATE = '2026-09-16';
 const startedAt = Date.now();   // so the opening screen is never a flash
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -1085,7 +1098,11 @@ function cloudInit(){
           if(!isAdmin) return;
           privRec = {}; lotNotes = {};
           snap.forEach(function(doc){
-            if(doc.id.indexOf('lot-') === 0) lotNotes[doc.id.slice(4)] = doc.data();
+            /* anything in privRec is merged into a PLOT record, so a document
+               that is not a plot must be picked out here - the lot notes taught
+               that once already (2026-09-06) */
+            if(doc.id === CHECK_DOC) checkState = doc.data() || {};
+            else if(doc.id.indexOf('lot-') === 0) lotNotes[doc.id.slice(4)] = doc.data();
             else privRec[doc.id] = doc.data();
           });
           rebuildCloud();
@@ -1195,6 +1212,189 @@ function cloudWrite(id, patch){
    is deliberate. Giving these plots a buyer would flip eight of them from Sold
    to Reserved and put a sale in the ledger that nobody actually made; this
    records what the survey said and asserts nothing else. */
+/* =====================================================================
+   THE CHECK LIST — what the map cannot answer from a desk
+   Buddy asked (2026-09-16) to be handed this when he is standing in the
+   cemetery. A web page cannot text him or watch where he is, so the list
+   lives here instead: it appears at the top of the map when the app is
+   opened at the cemetery, ticks and notes are kept with the committee's
+   record, and it all works with no signal.
+   Where an item names plots, the first is where "Show me this" goes.
+   ===================================================================== */
+const CHECKS = [
+  {id:'bowden', n:1, group:'Records that disagree',
+   t:'John Thomas Bowden is in the record twice. Which plot is his stone in?',
+   w:'Plots F4 and E5 — rows E and F, fourth and fifth up, by the Bowden family', p:['F4','E5']},
+  {id:'ellis', n:2, group:'Records that disagree',
+   t:'The two Ellis graves lie outside every plot. Is there a stone at each? Should plots be drawn there, and in which row?',
+   w:'The open ground between D8 / E7 and F9', p:['E7','D8']},
+  {id:'lot16', n:3, group:'Records that disagree',
+   t:'This family lot has no owner name — the record says only “???”. Whose is it?',
+   w:'Plots M5 and M6', p:['M5','M6']},
+  {id:'lot58', n:4, group:'Records that disagree',
+   t:'This lot is recorded as “OCCUPIED UNKNOWN”. Who is buried there, and whose lot is it?',
+   w:'Plots C13 and C14', p:['C13','C14']},
+  {id:'broadway', n:5, group:'Records that disagree',
+   t:'The map says TOM RILEY BROADWAY, JR.; Find a Grave says “broadaway”. Which is on the stone?',
+   w:'Plot B6 — Tom Broadway’s ground', p:['B6']},
+  {id:'niblett', n:6, group:'Records that disagree',
+   t:'“INFANT NIBLETT” — is there a stone, and is the name Niblett or Neblett on it?',
+   w:'Plot C8 — between Grover C. Niblett (C7) and the Nebletts (C9)', p:['C8']},
+  {id:'markers', n:7, group:'Corner markers',
+   t:'The map says 132 plots from the old survey have their four granite markers set. Spot-check a few: are they really there?',
+   w:'F7, F8, G8, G10 (Branche), B3–B5 (Stephenson), B6 (Broadway)', p:['F7','G8','B4']},
+  {id:'cutright', n:8, group:'Corner markers',
+   t:'Cutright: the four markers were due 29 September 2026. Are they set?',
+   w:'Plots F20 and F21 — tick them off on the plot itself and the reminders stop', p:['F20','F21']},
+  {id:'cornwell', n:9, group:'Corner markers',
+   t:'Cornwell: markers due 13 January 2027. Are any in yet?',
+   w:'Plots M20 to M27', p:['M20','M24']},
+  {id:'overline', n:10, group:'The property line and the drawing',
+   t:'69 plots are drawn at or past the property line. Is anything on the ground out there — stones, markers, a fence, a field edge — and where does the line seem to run?',
+   w:'The far end of every row: A17–20, B19–22, C22–25, D18–22, E19–21, F27–31, G28–32, H28–32, I32–37, J33–39, K34–39, L36–39, M37–41, N39–42, O41–42', p:['I35','M39']},
+  {id:'rowa', n:11, group:'The property line and the drawing',
+   t:'Row A was renumbered (it used to skip 15). Walk it and count: do the plots run 1 to 20 with nothing missing?',
+   w:'Row A — the eastern-most row, A1 at the bottom to A20 at the top', p:['A1','A20']},
+  {id:'names', n:12, group:'The property line and the drawing',
+   t:'Stand on a plot, open it here, and check the name matches what the committee’s own records call that ground.',
+   w:'Try M20, F20, B6, C1, U9', p:['M20','U9']},
+  {id:'gps', n:13, group:'The app in the field',
+   t:'MENU → Show me where I am. How far is the blue dot from where you are standing?',
+   w:'Stand on a plot you know', p:[]},
+  {id:'offline', n:14, group:'The app in the field',
+   t:'Turn off wi-fi and mobile data. Does the map open, search a name, and show the satellite picture?',
+   w:'Anywhere in the cemetery', p:[]},
+  {id:'fan', n:15, group:'The app in the field',
+   t:'The rows are not parallel — the western ones lean 4–5° more. Do the stones in M and O line up on a different angle from C and D?',
+   w:'Rows M and O, then rows C and D', p:['M20','C13']}
+];
+const CHECK_DOC = 'checklist';           // one document in the private half
+let checkState = {};                     // id -> {done, note, by, at}
+
+function checksLeft(){
+  return CHECKS.filter(function(c){ return !(checkState[c.id] && checkState[c.id].done); }).length;
+}
+
+function saveCheck(id, patch){
+  const now = Object.assign({}, checkState[id] || {}, patch,
+    {by: (cloud.user && cloud.user.email) || who() || '', at: new Date().toISOString()});
+  checkState[id] = now;
+  if(!db || !cloud.user) return Promise.resolve();          // nothing to send to yet
+  const one = {}; one[id] = now;
+  return db.collection(PRIV).doc(CHECK_DOC).set(one, {merge:true})
+    .catch(function(e){ toast('Could not save that note: ' + (e.code || e.message), 5000); });
+}
+
+/* The bar at the top of the map. Only for the committee, only when there is
+   something left to look at, and only once the phone says you are here. */
+const CEMETERY = {lat: 36.87955, lng: -76.96762, metres: 250};
+function showCheckBar(){
+  const b = $('#checkbar'), n = checksLeft();
+  if(!b || !isAdmin || !n) return;
+  const tb = $('#topbar');
+  if(tb) b.style.top = tb.getBoundingClientRect().bottom + 'px';
+  $('#checkbarn').textContent = n + (n === 1 ? ' thing to check' : ' things to check');
+  b.classList.add('on');
+}
+function hideCheckBar(){ const b = $('#checkbar'); if(b) b.classList.remove('on'); }
+
+/* Asked for once, by the committee member, from the check list itself: after
+   that the app may look silently whenever it opens. It never asks on its own,
+   and a visitor is never asked at all. */
+function watchForArrival(force){
+  if(!isAdmin || !navigator.geolocation) return;
+  let allowed = false;
+  try{ allowed = localStorage.getItem('millfield_arrive') === '1'; }catch(e){}
+  if(!allowed && !force) return;
+  navigator.geolocation.getCurrentPosition(function(pos){
+    try{ localStorage.setItem('millfield_arrive', '1'); }catch(e){}
+    const R = 6371000, toRad = Math.PI / 180;
+    const dx = (pos.coords.longitude - CEMETERY.lng) * toRad * R * Math.cos(CEMETERY.lat * toRad);
+    const dy = (pos.coords.latitude - CEMETERY.lat) * toRad * R;
+    const away = Math.hypot(dx, dy);
+    if(away <= CEMETERY.metres) showCheckBar();
+    else if(force) toast('You are about ' + (away > 1600 ? (away / 1609).toFixed(1) + ' miles' : Math.round(away) + ' m') +
+      ' from the cemetery — the list will come up when you are there', 6000);
+  }, function(){
+    if(force) toast('The phone would not give its position — the list is always under Committee tools', 6000);
+  }, {enableHighAccuracy:false, timeout:12000, maximumAge:300000});
+}
+
+function showChecklist(){
+  hideCheckBar();
+  let armed = false;
+  try{ armed = localStorage.getItem('millfield_arrive') === '1'; }catch(e){}
+  const left = checksLeft();
+  const groups = [];
+  CHECKS.forEach(function(c){ if(groups.indexOf(c.group) < 0) groups.push(c.group); });
+  openPanel(
+    '<h2>Cemetery check list</h2>' +
+    '<p class="note" style="margin-top:0">' + (left ? left + ' of ' + CHECKS.length + ' still to look at' : 'All ' +
+      CHECKS.length + ' settled — well done') + '. Tick what you settle and write what you see; it is kept with the ' +
+      'committee&rsquo;s record and works with no signal.</p>' +
+    groups.map(function(g){
+      return '<div class="sec-h">' + esc(g) + '</div>' +
+        CHECKS.filter(function(c){ return c.group === g; }).map(function(c){
+          const s = checkState[c.id] || {};
+          return '<div class="chk' + (s.done ? ' done' : '') + '" id="chk-' + c.id + '">' +
+            '<input type="checkbox" id="cd-' + c.id + '"' + (s.done ? ' checked' : '') + '>' +
+            '<div class="cb"><div class="ct"><b>' + c.n + '.</b> ' + esc(c.t) + '</div>' +
+            '<div class="cw">' + esc(c.w) + (s.by ? ' · last touched by ' + esc(s.by) : '') + '</div>' +
+            '<textarea id="cn-' + c.id + '" placeholder="What you saw">' + esc(s.note || '') + '</textarea>' +
+            (c.p.length ? '<button class="btn sec" style="min-height:40px;margin-top:6px" onclick="goToPlot(\'' +
+              esc(c.p[0]) + '\')">&#128205; Show me ' + esc(c.p[0]) + '</button>' : '') +
+            '</div></div>';
+        }).join('');
+    }).join('') +
+    '<button class="btn adm" id="chkSave">&#128190; Save what I have written</button>' +
+    '<button class="btn sec" onclick="printChecklist()">&#128424; Print it</button>' +
+    (armed ? '' : '<button class="btn sec" onclick="watchForArrival(true)">&#128205; Show this list when I am at the cemetery</button>') +
+    '<button class="btn sec" onclick="closePanel()">Close</button>');
+  $('#chkSave').onclick = function(){
+    const work = CHECKS.map(function(c){
+      const done = $('#cd-' + c.id).checked, note = $('#cn-' + c.id).value.trim();
+      const s = checkState[c.id] || {};
+      return (done === !!s.done && note === (s.note || '')) ? null : saveCheck(c.id, {done: done, note: note});
+    }).filter(Boolean);
+    if(!work.length){ toast('Nothing new to save'); return; }
+    Promise.all(work).then(function(){
+      toast(work.length + ' item' + (work.length === 1 ? '' : 's') + ' saved' +
+        (cloud.user ? '' : ' on this device — sign in to share'), 5000);
+      showChecklist();
+    });
+  };
+}
+
+function goToPlot(name){
+  const f = D.plots.features.find(function(x){ return (x.properties.row + x.properties.plot) === name; });
+  if(!f){ toast('No plot called ' + name); return; }
+  closePanel();
+  map.setView(plotCenter(f), 21);
+  showPlot(f.properties.id);
+}
+
+function printChecklist(){
+  const w = window.open('', '_blank');
+  if(!w){ toast('Allow pop-ups so it can open'); return; }
+  w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Millfield Cemetery — check list</title>' +
+    '<style>@page{size:letter;margin:.7in}body{font:11pt/1.45 Georgia,serif;color:#000}' +
+    'h1{font-size:15pt;margin:0 0 2px}.sub{color:#444;font-size:9.5pt;margin:0 0 14px}' +
+    'h2{font-size:12pt;margin:16px 0 6px;border-bottom:1px solid #000;padding-bottom:2px}' +
+    '.i{display:flex;gap:8px;margin:0 0 10px;break-inside:avoid}.bx{flex:0 0 13px;height:13px;border:1.4px solid #000;margin-top:3px}' +
+    '.w{font-size:9.5pt;color:#444;margin:1px 0 3px}.r{border-bottom:1px dotted #888;height:15px}' +
+    '.note{font-size:10pt;border:1px solid #000;padding:7px 9px;margin:4px 0 12px}</style></head><body>' +
+    '<h1>Millfield Cemetery — check list</h1><p class="sub">Version ' + BUILD + ' · printed ' + esc(fmtDate(today())) + '</p>' +
+    CHECKS.map(function(c, i){
+      const s = checkState[c.id] || {};
+      const head = (i === 0 || CHECKS[i-1].group !== c.group) ? '<h2>' + esc(c.group) + '</h2>' : '';
+      return head + '<div class="i"><div class="bx">' + (s.done ? '&#10003;' : '') + '</div><div>' +
+        '<b>' + c.n + '.</b> ' + esc(c.t) + '<div class="w">' + esc(c.w) + '</div>' +
+        (s.note ? '<div>' + esc(s.note).replace(/\n/g, '<br>') + '</div>' : '<div class="r"></div><div class="r"></div>') +
+        '</div></div>';
+    }).join('') + '</body></html>');
+  w.document.close();
+}
+
 const LOT_NOTES = {
   '86': {
     lotId: 86,
@@ -2244,6 +2444,19 @@ function exportAll(){
   setTimeout(function(){
     download('millfield-cemetery-' + stamp + '.geojson', JSON.stringify(gj), 'application/geo+json');
   }, 400);
+
+  /* what has been settled on the ground, and what was seen */
+  if(Object.keys(checkState).length){
+    const head = ['item','question','where','settled','what was seen','by','when'];
+    const rows = CHECKS.map(function(c){
+      const s = checkState[c.id] || {};
+      return [c.n, c.t, c.w, s.done ? 'YES' : 'no', s.note || '', s.by || '', (s.at || '').slice(0,10)];
+    });
+    setTimeout(function(){
+      download('millfield-checklist-' + stamp + '.csv',
+        [head.join(',')].concat(rows.map(r => r.map(csvCell).join(','))).join('\r\n'), 'text/csv');
+    }, 800);
+  }
 
   /* The signed records of purchase come too. The export used only to LIST them,
      so the church's copy of a signed letter lived nowhere but the database
@@ -3481,6 +3694,7 @@ function buildMenu(){
     (isAdmin
       ? '<div class="sep">Committee</div>' +
         menuItem('&#9881;', 'Committee tools &mdash; ledger, letters', 'adminPanel()') +
+        menuItem('&#128203;', 'Cemetery check list' + (checksLeft() ? ' (' + checksLeft() + ')' : ''), 'showChecklist()') +
         menuItem('&#128275;', 'Sign out', 'signOut()')
       : menuItem('&#128274;', 'Committee sign-in', 'adminPanel()')) +
     '<div class="sep">Help</div>' +
@@ -3649,6 +3863,17 @@ function guideSections(){
     'email address is on the record &mdash; are emailed once, and again every month until it is marked done. ' +
     '<b>Send the purchaser a reminder</b> and <b>Remind the family</b> write the message for you.']});
 
+  S.push({admin:true, h:'The check list', p:[
+    'Some questions can only be settled standing in the cemetery &mdash; which plot a stone is really in, whether ' +
+    'corner markers are there, who an unnamed lot belongs to. They are gathered in <b>MENU &rarr; Cemetery check ' +
+    'list</b>: tick what you settle, and write what you saw. It is kept with the committee&rsquo;s record, so ' +
+    'anyone signed in sees it, and it works with no signal.',
+    '<b>Show me</b> on an item takes the map to the plot it is about. <b>Print it</b> gives you a paper copy with ' +
+    'lines to write on, and your notes already filled in.',
+    'Tap <b>Show this list when I am at the cemetery</b> once, and from then on the app checks quietly when it ' +
+    'opens: if you are within about 250 yards of the church, a green bar appears at the top of the map. Nobody ' +
+    'else is ever asked for their position.']});
+
   S.push({admin:true, h:'The ledger', p:[
     'In Committee tools, <b>The ledger &mdash; everything sold and reserved</b> lists every sale and ' +
     'burial on one page. <b>Print this</b> for the meeting, or <b>Save it as a spreadsheet</b> for Excel.']});
@@ -3804,6 +4029,8 @@ function adminPanel(){
       (waiting ? '<button class="btn adm" onclick="pushDeviceOnly()">&#11014; Send ' + waiting +
                  ' device-only change' + (waiting===1?'':'s') + ' to the cloud</button>' : '') +
       '<button class="btn" onclick="showLedger()">&#128203; The ledger &mdash; everything sold and reserved</button>' +
+      '<button class="btn" onclick="showChecklist()">&#128203; Cemetery check list' +
+        (checksLeft() ? ' &mdash; ' + checksLeft() + ' to look at' : ' &mdash; all settled') + '</button>' +
       salesSection() + stonesSection() +
       '<div class="sec-h">Keep a copy</div>' +
       '<button class="btn" onclick="exportAll()">&#128190; Export the whole record (CSV + GeoJSON)</button>' +
@@ -3941,6 +4168,7 @@ function adminOn(){
   if(isAdmin) return;
   isAdmin = true;
   loadPdfLibs().catch(function(){});   // fetched now, so signing works later with no signal
+  setTimeout(function(){ watchForArrival(false); }, 2500);   // only if he has already said yes
   document.body.classList.add('isadmin');
   $('#topbar').classList.add('admin');
   $('#btnAdmin').textContent = '🧰';                    // tools, not a padlock
